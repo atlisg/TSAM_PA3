@@ -251,6 +251,13 @@ void readline_callback(char *line)
 
 int main(int argc, char **argv)
 {
+    int port;
+    if(argc < 2){
+        perror("1 argument needed");
+        exit(1);
+    }
+    port = (int) atoi(argv[1]);
+
 	/* Initialize OpenSSL */
 	SSL_library_init();
 	SSL_load_error_strings();
