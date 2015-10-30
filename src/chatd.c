@@ -12,12 +12,18 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <ctype.h>
 #include <string.h>
+#include <termios.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include <glib.h>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #define CERT_FILE "fd.crt"
 #define KEY_FILE  "fd.key"
@@ -68,21 +74,21 @@ int main(int argc, char **argv)
         /* Initialize SSL Library */
         SSL_library_init();
         SSL_load_error_strings();
-        SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_server_ method());
+        SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_server_method());
 
         /* Use our certificate file */
         if (SSL_CTX_use_certificate_file(ssl_ctx, CERT_FILE, SSL_FILETYPE_PEM) <= 0) {
-            ERR_print_errors(bio_err);
+            ERR_print_errors_fp(stderr);
             exit(1);
         }
         /* Use our private key file */
         if (SSL_CTX_use_PrivateKey_file(ssl_ctx, KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
-            ERR_print_errors(bio_err);
+            ERR_print_errors_fp(stderr);
             exit(1);
         }
         /* Load CA */
         if (!SSL_CTX_load_verify_locations(ssl_ctx, CA_FILE, NULL)) {
-            ERR_print_errors(bio_err);
+            ERR_print_errors_fp(stderr);
             exit(1);
         }
         /* Require client verification */
