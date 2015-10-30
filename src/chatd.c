@@ -19,7 +19,9 @@
 
 #include <glib.h>
 
-
+#define CERT_FILE "fd.crt"
+#define KEY_FILE  "fd.key"
+#define CA_FILE   "fd.csr"
 
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
@@ -62,6 +64,31 @@ int main(int argc, char **argv)
         server.sin_addr.s_addr = htonl(INADDR_ANY);
         server.sin_port = htons(32000);
         bind(sockfd, (struct sockaddr *) &server, (socklen_t) sizeof(server));
+        
+        /* Initialize SSL Library */
+        SSL_library_init();
+        SSL_load_error_strings();
+        SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_server_ method());
+
+        /* Use our certificate file */
+        if (SSL_CTX_use_certificate_file(ssl_ctx, CERT_FILE, SSL_FILETYPE_PEM) <= 0) {
+            ERR_print_errors(bio_err);
+            exit(1);
+        }
+        /* Use our private key file */
+        if (SSL_CTX_use_PrivateKey_file(ssl_ctx, KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
+            ERR_print_errors(bio_err);
+            exit(1);
+        }
+        /* Load CA */
+        if (!SSL_CTX_load_verify_locations(ssl_ctx, CA_FILE, NULL)) {
+            ERR_print_errors(bio_err);
+            exit(1);
+        }
+        /* Require client verification */
+        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+        /* Set depth of verification */
+        SSL_CTX_set_verify_depth(ssl_ctx, 1);
 
 	/* Before we can accept messages, we have to listen to the port. We allow one
 	 * 1 connection to queue for simplicity.
