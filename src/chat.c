@@ -28,6 +28,12 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+/* Definables */
+#define CLIENT_CERT "src/fd.crt"
+#define CLIENT_KEY  ""
+
+#define ON  1
+#define OFF 0
 
 /* This variable is 1 while the client is active and becomes 0 after
    a quit command to terminate the client and to clean up the
@@ -251,12 +257,13 @@ void readline_callback(char *line)
 
 int main(int argc, char **argv)
 {
-    int port;
-    if(argc < 2){
-        perror("1 argument needed");
+    int server, port;
+    if(argc < 3){
+        perror("2 arguments required (-serverIP -port#");
         exit(1);
     }
-    port = (int) atoi(argv[1]);
+    server = (int) atoi(argv[1]);
+    port = (int) atoi(argv[2]);
 
 	/* Initialize OpenSSL */
 	SSL_library_init();
@@ -272,6 +279,12 @@ int main(int argc, char **argv)
 	 * client.
 	 */
 
+    /* Load the client certificate into the SSL_CTX structure */
+    if(SSL_CTX_use_certificate_file(ssl_ctx, CLIENT_CERT, SSL_FILETYPE_PEM) <= 0){
+        ERR_print_errors_fp(stderr);
+        exit(1);
+    }
+
 	server_ssl = SSL_new(ssl_ctx);
 
 	/* Create and set up a listening socket. The sockets you
@@ -280,7 +293,7 @@ int main(int argc, char **argv)
 	 */
 
 	/* Use the socket for the SSL connection. */
-	SSL_set_fd(server_ssl, server_fd);
+	SSL_set_fd(server_ssl, server_fd); 
 
 	/* Now we can create BIOs and use them instead of the socket.
 	 * The BIO is responsible for maintaining the state of the
