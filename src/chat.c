@@ -263,7 +263,7 @@ void readline_callback(char *line)
 int main(int argc, char **argv)
 {
     char*   s_ipaddr;
-    int     s_port, sock;
+    int     s_port, sockfd;
     struct  sockaddr_in server_addr;
 
     if(argc < 3){
@@ -307,8 +307,8 @@ int main(int argc, char **argv)
      */
    
     /* Setting up the TCP socket */ 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    CHECK_ERR(sock, "socket");
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    CHECK_ERR(sockfd, "socket");
    
     memset(&server_addr, '\0', sizeof(server_addr));
 
@@ -326,14 +326,24 @@ int main(int argc, char **argv)
      * writes to sock_fd will insert unencrypted data into the
      * stream, which even may crash the server.
      */
-    BIO* sbio = BIO_new_socket(sock, BIO_NOCLOSE);
+    BIO* sbio = BIO_new_socket(sockfd, BIO_NOCLOSE);
     CHECK_NULL(sbio, "BIO_new_socket");
     SSL_set_bio(server_ssl, sbio, sbio);
     
     /* Set up secure connection to the chatd server. */
     if(BIO_do_connect(sbio) <= 0){
-        perror("BIO_do_connect");
+        fprintf(stderr, "Error connecting to server\n");
+        ERR_print_errors_fp(stderr);
     }
+
+    if(BIO_do_handshake(sbio) <= 0){
+        fprintf(stderr, "Error establishing SSL connection\n");
+        ERR_print_errors_fp(stderr);
+    }
+    
+    
+    //CHECK_ERR(SSL_connect(server_ssl), "SSL_connect");
+    //printf("HERE\n");
 
     /* Read characters from the keyboard while waiting for input.
      */
