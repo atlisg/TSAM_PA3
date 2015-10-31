@@ -156,8 +156,9 @@ int main(int argc, char **argv)
                below. */
             ssize_t n = SSL_read(ssl, message, sizeof(message) - 1);
 
-            /* Send the message back. */
-            SSL_write(ssl, message, (size_t) n);
+            /* Send a message back to the client. */
+            char *reply = "This message is from the SSL server";
+            SSL_write(ssl, reply, strlen(reply));
 
             /* We should close the connection. */
             SSL_shutdown(ssl);
