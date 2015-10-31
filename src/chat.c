@@ -164,8 +164,7 @@ void readline_callback(char *line)
         int i = 4;
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            write(STDOUT_FILENO, "Usage: /game username\n",
-                    29);
+            SSL_write(server_ssl, "Usage: /game username\n", 29);
             fsync(STDOUT_FILENO);
             rl_redisplay();
             return;
@@ -178,7 +177,7 @@ void readline_callback(char *line)
         /* Skip whitespace */
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            write(STDOUT_FILENO, "Usage: /join chatroom\n", 22);
+            SSL_write(server_ssl, "Usage: /join chatroom\n", 22);
             fsync(STDOUT_FILENO);
             rl_redisplay();
             return;
@@ -206,7 +205,7 @@ void readline_callback(char *line)
         int i = 4;
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            write(STDOUT_FILENO, "Usage: /say username message\n",
+            SSL_write(server_ssl, "Usage: /say username message\n",
                     29);
             fsync(STDOUT_FILENO);
             rl_redisplay();
@@ -216,7 +215,7 @@ void readline_callback(char *line)
         int j = i+1;
         while (line[j] != '\0' && isgraph(line[j])) { j++; }
         if (line[j] == '\0') {
-            write(STDOUT_FILENO, "Usage: /say username message\n",
+            SSL_write(server_ssl, "Usage: /say username message\n",
                     29);
             fsync(STDOUT_FILENO);
             rl_redisplay();
@@ -234,7 +233,7 @@ void readline_callback(char *line)
         /* Skip whitespace */
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            write(STDOUT_FILENO, "Usage: /user username\n", 22);
+            SSL_write(server_ssl, "Usage: /user username\n", 22);
             fsync(STDOUT_FILENO);
             rl_redisplay();
             return;
@@ -257,7 +256,7 @@ void readline_callback(char *line)
     }
     /* Sent the buffer to the server. */
     snprintf(buffer, 255, "Message: %s\n", line);
-    write(STDOUT_FILENO, buffer, strlen(buffer));
+    SSL_write(server_ssl, buffer, strlen(buffer));
     fsync(STDOUT_FILENO);
 }
 
@@ -308,7 +307,7 @@ int main(int argc, char **argv)
      */
    
     /* Setting up the TCP socket */ 
-    sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sock = socket(AF_INET, SOCK_STREAM, 0);
     CHECK_ERR(sock, "socket");
    
     memset(&server_addr, '\0', sizeof(server_addr));
@@ -327,16 +326,20 @@ int main(int argc, char **argv)
      * writes to sock_fd will insert unencrypted data into the
      * stream, which even may crash the server.
      */
-    BIO* sbio = BIO_new(BIO_s_socket());
-    BIO_set_fd(sbio, sock, BIO_NOCLOSE);
+    BIO* sbio = BIO_new_socket(sock, BIO_NOCLOSE);
+    CHECK_NULL(sbio, "BIO_new_socket");
     SSL_set_bio(server_ssl, sbio, sbio);
     
     /* Set up secure connection to the chatd server. */
+    if(BIO_do_connect(sbio) <= 0){
+        perror("BIO_do_connect");
+    }
 
     /* Read characters from the keyboard while waiting for input.
      */
     prompt = strdup("> ");
     rl_callback_handler_install(prompt, (rl_vcpfunc_t*) &readline_callback);
+    
     while (active) {
         fd_set rfds;
         struct timeval timeout;
@@ -359,7 +362,7 @@ int main(int argc, char **argv)
             break;
         }
         if (r == 0) {
-            write(STDOUT_FILENO, "No message?\n", 12);
+            SSL_write(server_ssl, "No message?\n", 12);
             fsync(STDOUT_FILENO);
             /* Whenever you print out a message, call this
                to reprint the current input line. */
