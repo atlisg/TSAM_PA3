@@ -25,9 +25,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#define CERT_FILE "fd.crt"
-#define KEY_FILE  "fd.key"
-#define CA_FILE   "fd.csr"
+#define CERT_FILE "src/fd.crt"
+#define KEY_FILE  "src/fd.key"
+#define CA_FILE   "src/fd.csr"
 
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
@@ -60,6 +60,7 @@ int main(int argc, char **argv)
         int sockfd;
         struct sockaddr_in server, client;
         char message[512];
+        SSL *ssl;
 
         /* Create and bind a TCP socket */
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -87,14 +88,14 @@ int main(int argc, char **argv)
             exit(1);
         }
         /* Load CA */
-        if (!SSL_CTX_load_verify_locations(ssl_ctx, CA_FILE, NULL)) {
-            ERR_print_errors_fp(stderr);
-            exit(1);
-        }
+//        if (!SSL_CTX_load_verify_locations(ssl_ctx, CA_FILE, NULL)) {
+//            ERR_print_errors_fp(stderr);
+//            exit(1);
+//        }
         /* Require client verification */
-        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+//        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
         /* Set depth of verification */
-        SSL_CTX_set_verify_depth(ssl_ctx, 1);
+//        SSL_CTX_set_verify_depth(ssl_ctx, 1);
 
 	/* Before we can accept messages, we have to listen to the port. We allow one
 	 * 1 connection to queue for simplicity.
@@ -128,18 +129,37 @@ int main(int argc, char **argv)
                         int connfd;
                         connfd = accept(sockfd, (struct sockaddr *) &client,
                                         &len);
+
+                        printf ("TCP Connection from %lx, port %x\n",
+                                client.sin_addr.s_addr, client.sin_port);
+                        
+                        /* TCP connection ready, create new SSL struct */
+                        ssl = SSL_new(ssl_ctx);
+
+                        /* Assign socket to ssl */
+                        SSL_set_fd(ssl, connfd);
+
+                        /* Perform handshake on SSL server */
+                        SSL_accept(ssl);
+                        
+                        printf("Welcome.\n");
+                        printf("SSL connection using %s\n", SSL_get_cipher (ssl));
                         
                         /* Receive one byte less than declared,
                            because it will be zero-termianted
                            below. */
-                        ssize_t n = read(connfd, message, sizeof(message) - 1);
+                        ssize_t n = SSL_read(ssl, message, sizeof(message) - 1);
 
                         /* Send the message back. */
-                        write(connfd, message, (size_t) n);
+                        SSL_write(ssl, message, (size_t) n);
 
                         /* We should close the connection. */
-                        shutdown(connfd, SHUT_RDWR);
+                        SSL_shutdown(ssl);
                         close(connfd);
+
+                        /* Free */
+                        SSL_free(ssl);
+                        SSL_CTX_free(ssl_ctx);
 
                         /* Zero terminate the message, otherwise
                            printf may access memory outside of the
