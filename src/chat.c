@@ -20,6 +20,9 @@
 #include <termios.h>
 #include <signal.h>
 
+/* To convert IP address to binary form */
+#include <arpa/inet.h>
+
 /* Secure socket layer headers */
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -29,6 +32,9 @@
 #include <readline/history.h>
 
 /* Definables */
+#define CHECK_NULL(x, s)    if ((x)==NULL)  {perror(s); exit(1);}
+#define CHECK_ERR(x, s)     if ((x)==-1)    {perror(s); exit(1);}
+
 #define CLIENT_CERT "src/fd.crt"
 #define CLIENT_KEY  ""
 
@@ -265,15 +271,16 @@ int main(int argc, char **argv)
         perror("2 arguments required (-serverIP -port#");
         exit(1);
     }
-    s_ipaddr = (int) atoi(argv[1]);
+    s_ipaddr = argv[1];
     s_port = (int) atoi(argv[2]);
 
     /* Initialize OpenSSL */
     SSL_library_init();
     SSL_load_error_strings();
     SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_client_method());
+    CHECK_NULL(ssl_ctx, "SSL_CTX_new");
 
-    /* TODO:
+    /* TODO: DONE?
      * We may want to use a certificate file if we self sign the
      * certificates using SSL_use_certificate_file(). If available,
      * a private key can be loaded using
@@ -287,39 +294,43 @@ int main(int argc, char **argv)
         ERR_print_errors_fp(stderr);
         exit(1);
     }
+
+    SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_NONE, NULL);
     
     /* Create the SSL structure */
     server_ssl = SSL_new(ssl_ctx);
+    CHECK_NULL(server_ssl, "SSL_new");
 
-    /* Create and set up a listening socket. The sockets you
+    /* TODO: DONE?
+     * Create and set up a listening socket. The sockets you
      * create here can be used in select calls, so do not forget
      * them.
      */
    
     /* Setting up the TCP socket */ 
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    
-    if(sock == -1){
-        perror("socket");
-        exit(1);
-    }
-
+    CHECK_ERR(sock, "socket");
+   
     memset(&server_addr, '\0', sizeof(server_addr));
 
-    server_addr.sin_family  = AF_INET;
-    server_addr.sin_port    = htons(s_port);            // Server port
-    server_addr.sin_addr.s_addr = inet_addr(s_ipaddr);  // Server IP
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(s_port);                // Server port
+    inet_pton(AF_INET, s_ipaddr, &server_addr.sin_addr); // Server IP
 
     /* Use the socket for the SSL connection. */
     SSL_set_fd(server_ssl, server_fd); 
 
-    /* Now we can create BIOs and use them instead of the socket.
+    /* TODO:
+     * Now we can create BIOs and use them instead of the socket.
      * The BIO is responsible for maintaining the state of the
      * encrypted connection and the actual encryption. Reads and
      * writes to sock_fd will insert unencrypted data into the
      * stream, which even may crash the server.
      */
-
+    BIO* sbio = BIO_new(BIO_s_socket());
+    BIO_set_fd(sbio, sock, BIO_NOCLOSE);
+    SSL_set_bio(server_ssl, sbio, sbio);
+    
     /* Set up secure connection to the chatd server. */
 
     /* Read characters from the keyboard while waiting for input.
