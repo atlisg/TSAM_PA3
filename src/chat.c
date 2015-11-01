@@ -260,91 +260,109 @@ void readline_callback(char *line)
     fsync(STDOUT_FILENO);
 }
 
+
+/* Initializes context */
+SSL_CTX* InitCTX(){
+    SSL_CTX* ctx;
+    
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+
+    ctx = SSL_CTX_new(SSLv3_client_method());
+    CHECK_NULL(ctx, "SSL_CTX_new");
+
+    return ctx;
+}
+
+/* Loads certificates into context */
+void load_certificates(SSL_CTX* ctx){
+    if(SSL_CTX_use_certificate_file(ctx, CLIENT_CERT, SSL_FILETYPE_PEM) <= 0){
+        ERR_print_errors_fp(stderr);
+        exit(1);
+    }
+    // Client key?
+    // CA file?
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+}
+
+/* Creates socket and connects to server */
+void open_connection(char* server_ip, int server_port){
+    struct sockaddr_in addr;
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    CHECK_ERR(server_fd, "socket");
+
+    memset(&addr, '\0', sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(server_port);
+    inet_pton(AF_INET, server_ip, &addr.sin_addr);
+
+    CHECK_ERR(connect(server_fd, (struct sockaddr*)&addr, sizeof(addr)), "connect");
+}
+
+/* Checks what sort of error occured (if any) */
+void check_ssl_error(int status){
+    switch(SSL_get_error(server_ssl, status)){
+        case SSL_ERROR_NONE: // Success
+            break;
+        case SSL_ERROR_SSL:
+            fprintf(stderr, "Failed SSL handshake\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
+        case SSL_ERROR_WANT_READ:
+            fprintf(stderr, "SSL error: Want read\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
+        case SSL_ERROR_WANT_WRITE:
+            fprintf(stderr, "SSL error: Want write\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
+        case SSL_ERROR_WANT_CONNECT:
+            fprintf(stderr, "SSL error: Want connect\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
+        case SSL_ERROR_SYSCALL:
+            perror("SSL_connect");
+            exit(1);
+        case SSL_ERROR_ZERO_RETURN:
+            fprintf(stderr, "SSL error: connection closed\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
+    }
+}
+
+
+
 int main(int argc, char **argv)
 {
-    char*   s_ipaddr;
-    int     s_port, sockfd;
-    struct  sockaddr_in server_addr;
+    char*       server_ipaddr;
+    int         server_port;
+    SSL_CTX*    ssl_ctx;
 
     if(argc < 3){
         perror("2 arguments required (-serverIP -port#");
         exit(1);
     }
-    s_ipaddr = argv[1];
-    s_port = (int) atoi(argv[2]);
+    server_ipaddr = argv[1];
+    server_port = (int) atoi(argv[2]);
 
     /* Initialize OpenSSL */
     SSL_library_init();
-    SSL_load_error_strings();
-    SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_client_method());
-    CHECK_NULL(ssl_ctx, "SSL_CTX_new");
-
-    /* TODO: DONE?
-     * We may want to use a certificate file if we self sign the
-     * certificates using SSL_use_certificate_file(). If available,
-     * a private key can be loaded using
-     * SSL_CTX_use_PrivateKey_file(). The use of private keys with
-     * a server side key data base can be used to authenticate the
-     * client.
-     */
-
-    /* Load the client certificate into the SSL_CTX structure */
-    if(SSL_CTX_use_certificate_file(ssl_ctx, CLIENT_CERT, SSL_FILETYPE_PEM) <= 0){
-        ERR_print_errors_fp(stderr);
-        exit(1);
-    }
-
-    SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_NONE, NULL);
+    
+    ssl_ctx = InitCTX();
+    load_certificates(ssl_ctx);
+    open_connection(server_ipaddr, server_port);
     
     /* Create the SSL structure */
     server_ssl = SSL_new(ssl_ctx);
     CHECK_NULL(server_ssl, "SSL_new");
 
-    /* TODO: DONE?
-     * Create and set up a listening socket. The sockets you
-     * create here can be used in select calls, so do not forget
-     * them.
-     */
-   
-    /* Setting up the TCP socket */ 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    CHECK_ERR(sockfd, "socket");
-   
-    memset(&server_addr, '\0', sizeof(server_addr));
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(s_port);                // Server port
-    inet_pton(AF_INET, s_ipaddr, &server_addr.sin_addr); // Server IP
-
     /* Use the socket for the SSL connection. */
-    SSL_set_fd(server_ssl, server_fd); 
+    SSL_set_fd(server_ssl, server_fd);
 
-    /* TODO:
-     * Now we can create BIOs and use them instead of the socket.
-     * The BIO is responsible for maintaining the state of the
-     * encrypted connection and the actual encryption. Reads and
-     * writes to sock_fd will insert unencrypted data into the
-     * stream, which even may crash the server.
-     */
-    BIO* sbio = BIO_new_socket(sockfd, BIO_NOCLOSE);
-    CHECK_NULL(sbio, "BIO_new_socket");
-    SSL_set_bio(server_ssl, sbio, sbio);
-    
     /* Set up secure connection to the chatd server. */
-    if(BIO_do_connect(sbio) <= 0){
-        fprintf(stderr, "Error connecting to server\n");
-        ERR_print_errors_fp(stderr);
-    }
-
-    if(BIO_do_handshake(sbio) <= 0){
-        fprintf(stderr, "Error establishing SSL connection\n");
-        ERR_print_errors_fp(stderr);
-    }
+    check_ssl_error(SSL_connect(server_ssl));
     
-    
-    //CHECK_ERR(SSL_connect(server_ssl), "SSL_connect");
-    //printf("HERE\n");
-
     /* Read characters from the keyboard while waiting for input.
      */
     prompt = strdup("> ");
