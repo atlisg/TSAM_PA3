@@ -25,9 +25,12 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+/* Definables */
+#define CHECK_NULL(x, s)    if((x)==NULL)   {perror(s); exit(1);}
+#define CHECK_ERR(x, s)     if((x)==-1)     {perror(s); exit(1);}
+
 #define SERVER_CERT "src/fd.crt"
-#define KEY_FILE  "src/fd.key"
-//#define CA_FILE   "src/fd.csr"
+#define SERVER_KEY  "src/fd.key"
 
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
@@ -53,60 +56,78 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
     return 0;
 }
 
+/* Initalizes context */
+SSL_CTX* init_CTX(){
+    SSL_CTX* ctx;
+
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+
+    ctx = SSL_CTX_new(SSLv3_client_method());
+    CHECK_NULL(ctx, "SSL_CTX_new");
+    
+    return ctx;
+}
+
+/* Loads certificates into context */
+void load_certificates(SSL_CTX* ctx){
+    if (SSL_CTX_use_certificate_file(ctx, SERVER_CERT, SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(1);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, SERVER_KEY, SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(1);
+    }
+    // CA file?
+
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+}
+
+/* Create a server socket */
+int open_listener(int server_port){
+    struct  sockaddr_in server;
+    int     sock_fd;
+
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    CHECK_ERR(sock_fd, "socket");
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(server_port);
+    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    
+    /* Bind port */
+    CHECK_ERR(bind(sock_fd, (struct sockaddr*)&server, sizeof(server)), "bind");
+
+    /* Listen to port, allow 1 connection */
+    CHECK_ERR(listen(sock_fd, 1), "listen");
+
+    return sock_fd;
+}
 
 
 int main(int argc, char **argv)
 {
-    int sockfd, port;
-    struct sockaddr_in server, client;
-    char message[512];
-    SSL *ssl;
+    int         sockfd, port;
+    struct      sockaddr_in client;
+    char        message[512];
+    SSL*        ssl;
+    SSL_CTX*    ssl_ctx;
 
     if(argc < 2){
         perror("1 argument required (port#)");
         exit(1);
     }
     port = (int)atoi(argv[1]);
-
-    /* Create and bind a TCP socket */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&server, 0, sizeof(server));
-    server.sin_family = AF_INET;
-    /* Network functions need arguments in network byte order instead of
-       host byte order. The macros htonl, htons convert the values, */
-    server.sin_addr.s_addr = htonl(INADDR_ANY);
-    server.sin_port = htons(port);
-    bind(sockfd, (struct sockaddr *) &server, (socklen_t) sizeof(server));
-
-    /* Initialize SSL Library */
+    
+    /* Initalize OpenSSL */
     SSL_library_init();
-    SSL_load_error_strings();
-    SSL_CTX *ssl_ctx = SSL_CTX_new(TLSv1_server_method());
 
-    /* Use our certificate file */
-    if (SSL_CTX_use_certificate_file(ssl_ctx, SERVER_CERT, SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
-        exit(1);
-    }
-    /* Use our private key file */
-    if (SSL_CTX_use_PrivateKey_file(ssl_ctx, KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
-        exit(1);
-    }
-    /* Load CA */
-    //        if (!SSL_CTX_load_verify_locations(ssl_ctx, CA_FILE, NULL)) {
-    //            ERR_print_errors_fp(stderr);
-    //            exit(1);
-    //        }
-    /* Require client verification */
-    //        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
-    /* Set depth of verification */
-    //        SSL_CTX_set_verify_depth(ssl_ctx, 1);
-
-    /* Before we can accept messages, we have to listen to the port. We allow one
-     * 1 connection to queue for simplicity.
-     */
-    listen(sockfd, 1);
+    ssl_ctx = init_CTX();
+    load_certificates(ssl_ctx);
+    sockfd = open_listener(port);
 
     for (;;) {
         fd_set rfds;

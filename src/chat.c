@@ -256,9 +256,9 @@ void readline_callback(char *line)
 
 
 /* Initializes context */
-SSL_CTX* InitCTX(){
+SSL_CTX* init_CTX(){
     SSL_CTX* ctx;
-    
+
     OpenSSL_add_all_algorithms();
     SSL_load_error_strings();
 
@@ -342,11 +342,11 @@ int main(int argc, char **argv)
 
     /* Initialize OpenSSL */
     SSL_library_init();
-    
-    ssl_ctx = InitCTX();
+
+    ssl_ctx = init_CTX();
     load_certificates(ssl_ctx);
     open_connection(server_ipaddr, server_port);
-    
+
     /* Create the SSL structure */
     server_ssl = SSL_new(ssl_ctx);
     CHECK_NULL(server_ssl, "SSL_new");
@@ -356,12 +356,12 @@ int main(int argc, char **argv)
 
     /* Set up secure connection to the chatd server. */
     check_ssl_error(SSL_connect(server_ssl));
-    
+
     /* Read characters from the keyboard while waiting for input.
      */
     prompt = strdup("> ");
     rl_callback_handler_install(prompt, (rl_vcpfunc_t*) &readline_callback);
-    
+
     while (active) {
         fd_set rfds;
         struct timeval timeout;
