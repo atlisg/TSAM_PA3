@@ -257,6 +257,8 @@ void readline_callback(char *line)
 
 /* Initializes context */
 SSL_CTX* init_CTX(){
+    printf("Initalizing SSL context\n");
+
     SSL_CTX* ctx;
 
     OpenSSL_add_all_algorithms();
@@ -270,6 +272,8 @@ SSL_CTX* init_CTX(){
 
 /* Loads certificates into context */
 void load_certificates(SSL_CTX* ctx){
+    printf("Loading certificates\n");
+
     if(SSL_CTX_use_certificate_file(ctx, CLIENT_CERT, SSL_FILETYPE_PEM) <= 0){
         ERR_print_errors_fp(stderr);
         exit(1);
@@ -281,6 +285,8 @@ void load_certificates(SSL_CTX* ctx){
 
 /* Creates socket and connects to server */
 void open_connection(char* server_ip, int server_port){
+    printf("Creating socket and connecting to server\n");
+
     struct sockaddr_in addr;
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);

@@ -61,6 +61,7 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
 
 /* Initalizes context */
 SSL_CTX* init_CTX(){
+    printf("Initalizing SSL context\n");
     SSL_CTX* ctx;
 
     OpenSSL_add_all_algorithms();
@@ -74,6 +75,7 @@ SSL_CTX* init_CTX(){
 
 /* Loads certificates into context */
 void load_certificates(SSL_CTX* ctx){
+    printf("Loading certificates\n");
     if (SSL_CTX_use_certificate_file(ctx, SERVER_CERT, SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(1);
@@ -90,6 +92,8 @@ void load_certificates(SSL_CTX* ctx){
 
 /* Create a server socket */
 int open_listener(int server_port){
+    printf("Creating the socket and listening\n");
+
     struct  sockaddr_in server;
     int     sock_fd;
 
@@ -116,6 +120,27 @@ int open_listener(int server_port){
 
 // TODO: Broadcast message
 
+/* Serves the given SSL connection */
+void serve(SSL* ssl){
+    char    buff[1024], reply[1024];
+    int     fd, bytes;
+
+    if(SSL_accept(ssl) == -1){
+        ERR_print_errors_fp(stderr);
+    } else {
+        while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
+            buff[bytes] = '\0';
+            printf("%s\n", buff);
+
+        }
+        sprintf(reply, "This is a reply from the SSL server");
+        SSL_write(ssl, reply, strlen(reply));
+    }
+    fd = SSL_get_fd(ssl);
+    //SSL_shutdown(ssl);
+    SSL_free(ssl);
+    close(fd);
+}
 
 int main(int argc, char **argv)
 {
@@ -175,36 +200,8 @@ int main(int argc, char **argv)
 
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
-
-            /* Perform handshake on SSL server */
-            SSL_accept(ssl);
-
-            SSL_write(ssl, "Welcome.\n", 10);
-            printf("SSL connection using %s\n", SSL_get_cipher (ssl));
-
-            /* Receive one byte less than declared,
-               because it will be zero-termianted
-               below. */
-            ssize_t n;
-            while((n = SSL_read(ssl, message, sizeof(message) - 1)) > 0){
-                /* Zero terminate the message, otherwise
-                   printf may access memory outside of the
-                   string. */
-                message[n] = '\0';
-                /* Print the message to stdout and flush. */
-                fprintf(stdout, "Received:\n%s\n", message);
-                fflush(stdout);
-                /* Send a message back to the client. */
-                char *reply = "This message is from the SSL server\n";
-                SSL_write(ssl, reply, strlen(reply));
-            }
-
-            /* We should close the connection. */
-            SSL_shutdown(ssl);
-            close(connfd);
-
-            /* Free */
-            SSL_free(ssl);
+           
+            serve(ssl);
         } else {
             fprintf(stdout, "No message in five seconds.\n");
             fflush(stdout);
