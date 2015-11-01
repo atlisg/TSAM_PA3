@@ -152,8 +152,6 @@ void serve(SSL* ssl){
     SSL_free(ssl);
     close(fd);
 }
-            
-
 
 int main(int argc, char **argv)
 {
@@ -213,7 +211,7 @@ int main(int argc, char **argv)
 
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
-            
+           
             serve(ssl);
         } else {
             fprintf(stdout, "No message in five seconds.\n");

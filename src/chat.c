@@ -403,12 +403,12 @@ int main(int argc, char **argv)
         }
 
         /* Handle messages from the server here! */
-/*        if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
-            fsync(STDOUT_FILENO);
+        if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
+            //fsync(STDOUT_FILENO);
             printf(message);
             rl_redisplay();
             continue;
-        } */
+        }
     }
     /* replace by code to shutdown the connection and exit
        the program. */
