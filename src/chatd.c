@@ -35,6 +35,8 @@
 #define SERVER_CERT "src/fd.crt"
 #define SERVER_KEY  "src/fd.key"
 
+/* Global data structures used */ 
+
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
 int sockaddr_in_cmp(const void *addr1, const void *addr2)
@@ -139,13 +141,14 @@ void serve(SSL* ssl){
     if(SSL_accept(ssl) == -1){
         ERR_print_errors_fp(stderr);
     } else {
+        sprintf(reply, "Welcome to the SSL server");
+        SSL_write(ssl, reply, strlen(reply));
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
             buff[bytes] = '\0';
             printf("%s\n", buff);
 
         }
-        sprintf(reply, "Welcome to the SSL server");
-        SSL_write(ssl, reply, strlen(reply));
+
     }
     fd = SSL_get_fd(ssl);
     //SSL_shutdown(ssl);
@@ -211,7 +214,7 @@ int main(int argc, char **argv)
 
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
-           
+
             serve(ssl);
         } else {
             fprintf(stdout, "No message in five seconds.\n");
