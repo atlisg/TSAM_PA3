@@ -63,7 +63,7 @@ SSL_CTX* init_CTX(){
     OpenSSL_add_all_algorithms();
     SSL_load_error_strings();
 
-    ctx = SSL_CTX_new(SSLv3_client_method());
+    ctx = SSL_CTX_new(TLSv1_server_method());
     CHECK_NULL(ctx, "SSL_CTX_new");
     
     return ctx;

@@ -262,7 +262,7 @@ SSL_CTX* init_CTX(){
     OpenSSL_add_all_algorithms();
     SSL_load_error_strings();
 
-    ctx = SSL_CTX_new(SSLv3_client_method());
+    ctx = SSL_CTX_new(TLSv1_client_method());
     CHECK_NULL(ctx, "SSL_CTX_new");
 
     return ctx;
@@ -316,7 +316,7 @@ void check_ssl_error(int status){
             ERR_print_errors_fp(stderr);
             exit(1);
         case SSL_ERROR_SYSCALL:
-            perror("SSL_connect");
+            perror("SSL_coonnect");
             exit(1);
         case SSL_ERROR_ZERO_RETURN:
             fprintf(stderr, "SSL error: connection closed\n");
