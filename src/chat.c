@@ -332,6 +332,7 @@ int main(int argc, char **argv)
     char*       server_ipaddr;
     int         server_port;
     SSL_CTX*    ssl_ctx;
+    char        message[512];
 
     if(argc < 3){
         perror("2 arguments required (-serverIP -port#");
@@ -396,6 +397,12 @@ int main(int argc, char **argv)
         }
 
         /* Handle messages from the server here! */
+        if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
+            fsync(STDOUT_FILENO);
+            printf(message);
+            rl_redisplay();
+            continue;
+        }
     }
     /* replace by code to shutdown the connection and exit
        the program. */
