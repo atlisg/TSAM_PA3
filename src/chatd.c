@@ -61,6 +61,7 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
 
 /* Initalizes context */
 SSL_CTX* init_CTX(){
+    printf("Initalizing SSL context\n");
     SSL_CTX* ctx;
 
     OpenSSL_add_all_algorithms();
@@ -74,6 +75,7 @@ SSL_CTX* init_CTX(){
 
 /* Loads certificates into context */
 void load_certificates(SSL_CTX* ctx){
+    printf("Loading certificates\n");
     if (SSL_CTX_use_certificate_file(ctx, SERVER_CERT, SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(1);
@@ -90,6 +92,8 @@ void load_certificates(SSL_CTX* ctx){
 
 /* Create a server socket */
 int open_listener(int server_port){
+    printf("Creating the socket and listening\n");
+
     struct  sockaddr_in server;
     int     sock_fd;
 
