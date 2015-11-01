@@ -114,6 +114,17 @@ int open_listener(int server_port){
     return sock_fd;
 }
 
+/* Logs a line when a client connects/disconnects/authorizes */
+void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
+    time_t  t;
+    char    date[20];
+
+    t = time(NULL);
+    strftime(date, sizeof(date), "%FT%T\n", localtime(&t));
+
+    printf("%s : %s:%d %s\n", date, ip, port, msg);
+}
+
 // TODO: Send welcome
 
 // TODO: Send private message
@@ -133,7 +144,7 @@ void serve(SSL* ssl){
             printf("%s\n", buff);
 
         }
-        sprintf(reply, "This is a reply from the SSL server");
+        sprintf(reply, "Welcome to the SSL server");
         SSL_write(ssl, reply, strlen(reply));
     }
     fd = SSL_get_fd(ssl);
@@ -195,7 +206,7 @@ int main(int argc, char **argv)
             /* Get client's IP address and port */ 
             inet_ntop(AF_INET, &client.sin_addr.s_addr, cip, INET_ADDRSTRLEN);
             cp = ntohs(client.sin_port);
-            printf ("Connecting: %s:%d\n", cip, cp);
+            log_connection(cip, cp, "connected");
 
             /* Create new SSL struct */
             ssl = SSL_new(ssl_ctx);
