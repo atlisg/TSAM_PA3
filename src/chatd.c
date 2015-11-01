@@ -25,6 +25,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+/* To convert IP address */
+#include <arpa/inet.h>
+
 /* Definables */
 #define CHECK_NULL(x, s)    if((x)==NULL)   {perror(s); exit(1);}
 #define CHECK_ERR(x, s)     if((x)==-1)     {perror(s); exit(1);}
@@ -107,13 +110,17 @@ int open_listener(int server_port){
     return sock_fd;
 }
 
+// TODO: Send welcome
+
+// TODO: Send private message
+
+// TODO: Broadcast message
+
 
 int main(int argc, char **argv)
 {
     int         sockfd, port;
-    struct      sockaddr_in client;
     char        message[512];
-    SSL*        ssl;
     SSL_CTX*    ssl_ctx;
 
     if(argc < 2){
@@ -130,9 +137,10 @@ int main(int argc, char **argv)
     sockfd = open_listener(port);
 
     for (;;) {
-        fd_set rfds;
-        struct timeval tv;
-        int retval;
+        fd_set              rfds;
+        struct timeval      tv;
+        struct sockaddr_in  client;
+        int                 retval;
 
         /* Check whether there is data on the socket fd. */
         FD_ZERO(&rfds);
@@ -141,26 +149,28 @@ int main(int argc, char **argv)
         /* Wait for five seconds. */
         tv.tv_sec = 5;
         tv.tv_usec = 0;
+        
         retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
-
         if (retval == -1) {
             perror("select()");
         } else if (retval > 0) {
+            int         connfd, cp;
+            SSL*        ssl;
+            char        cip[INET_ADDRSTRLEN]; 
+            socklen_t   len = (socklen_t) sizeof(client);
+
             /* Data is available, receive it. */
             assert(FD_ISSET(sockfd, &rfds));
 
-            /* Copy to len, since recvfrom may change it. */
-            socklen_t len = (socklen_t) sizeof(client);
+            /* Accept connection */
+            connfd = accept(sockfd, (struct sockaddr *) &client, &len);
+           
+            /* Get client's IP address and port */ 
+            inet_ntop(AF_INET, &client.sin_addr.s_addr, cip, INET_ADDRSTRLEN);
+            cp = ntohs(client.sin_port);
+            printf ("Connecting: %s:%d\n", cip, cp);
 
-            /* For TCP connectios, we first have to accept. */
-            int connfd;
-            connfd = accept(sockfd, (struct sockaddr *) &client,
-                    &len);
-
-            printf ("TCP Connection from %lx, port %x\n",
-                    client.sin_addr.s_addr, client.sin_port);
-
-            /* TCP connection ready, create new SSL struct */
+            /* Create new SSL struct */
             ssl = SSL_new(ssl_ctx);
 
             /* Assign socket to ssl */
@@ -187,7 +197,6 @@ int main(int argc, char **argv)
 
             /* Free */
             SSL_free(ssl);
-            SSL_CTX_free(ssl_ctx);
 
             /* Zero terminate the message, otherwise
                printf may access memory outside of the
@@ -201,4 +210,6 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
     }
+    close(sockfd);
+    SSL_CTX_free(ssl_ctx);
 }

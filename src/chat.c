@@ -17,7 +17,7 @@
 #include <termios.h>
 #include <signal.h>
 
-/* To convert IP address to binary form */
+/* To convert IP address */
 #include <arpa/inet.h>
 
 /* Secure socket layer headers */
