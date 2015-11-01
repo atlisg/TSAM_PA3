@@ -185,7 +185,16 @@ int main(int argc, char **argv)
             /* Receive one byte less than declared,
                because it will be zero-termianted
                below. */
-            ssize_t n = SSL_read(ssl, message, sizeof(message) - 1);
+            ssize_t n;
+            while((n = SSL_read(ssl, message, sizeof(message) - 1)) > 0){
+                /* Zero terminate the message, otherwise
+                   printf may access memory outside of the
+                   string. */
+                message[n] = '\0';
+                /* Print the message to stdout and flush. */
+                fprintf(stdout, "Received:\n%s\n", message);
+                fflush(stdout);
+            }
 
             /* Send a message back to the client. */
             char *reply = "This message is from the SSL server";
@@ -197,14 +206,6 @@ int main(int argc, char **argv)
 
             /* Free */
             SSL_free(ssl);
-
-            /* Zero terminate the message, otherwise
-               printf may access memory outside of the
-               string. */
-            message[n] = '\0';
-            /* Print the message to stdout and flush. */
-            fprintf(stdout, "Received:\n%s\n", message);
-            fflush(stdout);
         } else {
             fprintf(stdout, "No message in five seconds.\n");
             fflush(stdout);
