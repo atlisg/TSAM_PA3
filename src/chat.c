@@ -1,9 +1,6 @@
-/* A UDP echo server with timeouts.
- *
- * Note that you will not need to use select and the timeout for a
- * tftp server. However, select is also useful if you want to receive
- * from multiple sockets at the same time. Read the documentation for
- * select on how to do this (Hint: Iterate with FD_ISSET()).
+/* 
+ *  SSL-chat client
+
  */
 
 #include <assert.h>
@@ -37,9 +34,6 @@
 
 #define CLIENT_CERT "src/fd.crt"
 #define CLIENT_KEY  ""
-
-#define ON  1
-#define OFF 0
 
 /* This variable is 1 while the client is active and becomes 0 after
    a quit command to terminate the client and to clean up the
@@ -405,4 +399,11 @@ int main(int argc, char **argv)
     }
     /* replace by code to shutdown the connection and exit
        the program. */
+    close(server_fd);
+    SSL_CTX_free(ssl_ctx);
 }
+
+
+
+
+
