@@ -32,10 +32,20 @@
 #define CHECK_NULL(x, s)    if((x)==NULL)   {perror(s); exit(1);}
 #define CHECK_ERR(x, s)     if((x)==-1)     {perror(s); exit(1);}
 
+
 #define SERVER_CERT "src/fd.crt"
 #define SERVER_KEY  "src/fd.key"
 
-/* Global data structures used */ 
+/* Global data structures used */
+GTree* fdTree;
+
+/* Converts IP address and port */
+static void ctor(const void *addr, char* ip, int* port){
+    const struct sockaddr_in *_addr = addr;
+    inet_ntop(AF_INET, &_addr->sin_addr.s_addr, ip, INET_ADDRSTRLEN);
+    *port = ntohs(_addr->sin_port);
+}
+
 
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
@@ -59,6 +69,18 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
         return 1;
     }
     return 0;
+}
+
+/* Prints out values as GTree is traversed */
+void traverse_print(gpointer key, gpointer value, gpointer data){
+    int     port;
+    char    ip[INET_ADDRSTRLEN];
+
+    struct sockaddr_in *addr = key;
+    
+    ctor(addr, ip, &port);
+
+    printf("USER: %s:%d\n", ip, port);
 }
 
 /* Initalizes context */
@@ -145,10 +167,9 @@ void serve(SSL* ssl){
         SSL_write(ssl, reply, strlen(reply));
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
             buff[bytes] = '\0';
-            printf("%s\n", buff);
+            printf("%s", buff);
 
         }
-
     }
     fd = SSL_get_fd(ssl);
     //SSL_shutdown(ssl);
@@ -175,6 +196,7 @@ int main(int argc, char **argv)
     load_certificates(ssl_ctx);
     sockfd = open_listener(port);
 
+    fdTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
     for (;;) {
         fd_set              rfds;
         struct timeval      tv;
@@ -205,8 +227,7 @@ int main(int argc, char **argv)
             connfd = accept(sockfd, (struct sockaddr *) &client, &len);
            
             /* Get client's IP address and port */ 
-            inet_ntop(AF_INET, &client.sin_addr.s_addr, cip, INET_ADDRSTRLEN);
-            cp = ntohs(client.sin_port);
+            ctor(&client, cip, &cp);
             log_connection(cip, cp, "connected");
 
             /* Create new SSL struct */
@@ -214,7 +235,10 @@ int main(int argc, char **argv)
 
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
-
+            
+            g_tree_insert(fdTree, &client, ssl);
+            //printf("%d\n", g_tree_nnodes(fdTree));
+            //g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
             serve(ssl);
         } else {
             fprintf(stdout, "No message in five seconds.\n");
