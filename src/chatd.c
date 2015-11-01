@@ -179,7 +179,7 @@ int main(int argc, char **argv)
             /* Perform handshake on SSL server */
             SSL_accept(ssl);
 
-            printf("Welcome.\n");
+            SSL_write(ssl, "Welcome.\n", 10);
             printf("SSL connection using %s\n", SSL_get_cipher (ssl));
 
             /* Receive one byte less than declared,
@@ -194,11 +194,10 @@ int main(int argc, char **argv)
                 /* Print the message to stdout and flush. */
                 fprintf(stdout, "Received:\n%s\n", message);
                 fflush(stdout);
+                /* Send a message back to the client. */
+                char *reply = "This message is from the SSL server\n";
+                SSL_write(ssl, reply, strlen(reply));
             }
-
-            /* Send a message back to the client. */
-            char *reply = "This message is from the SSL server";
-            SSL_write(ssl, reply, strlen(reply));
 
             /* We should close the connection. */
             SSL_shutdown(ssl);
