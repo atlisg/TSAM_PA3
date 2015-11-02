@@ -206,7 +206,7 @@ int main(int argc, char **argv)
         FD_ZERO(&rfds);
         FD_SET(sockfd, &rfds);
 
-        /* Wait for five seconds. */
+        /* Wait for five seconds. */ 
         tv.tv_sec = 5;
         tv.tv_usec = 0;
         
@@ -244,6 +244,13 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
     }
+    printf("Closing primary socket descriptor\n");
     close(sockfd);
+    printf("Freeing SSL context\n");
     SSL_CTX_free(ssl_ctx);
 }
+
+
+
+
+

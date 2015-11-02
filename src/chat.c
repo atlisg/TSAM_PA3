@@ -40,6 +40,12 @@
    connection. */
 static int active = 1;
 
+/* Strips all occurences of x from str */
+void strip(char* str, char x){
+    char *s, *d;
+    for( s = d = str; (*d = *s) ; d+=(*s++!=x) );
+}
+
 
 /* To read a password without echoing it to the console.
  *
@@ -72,7 +78,7 @@ void getpasswd(const char *prompt, char *passwd, size_t size)
     }
 
     printf("%s", prompt);
-    fgets(passwd, size, stdin);
+    CHECK_NULL(fgets(passwd, size, stdin), "fgets");
 
     /* The result in passwd is '\0' terminated and may contain a final
      * '\n'. If it exists, we remove it.
@@ -99,6 +105,7 @@ void getpasswd(const char *prompt, char *passwd, size_t size)
 sigint_handler(int signum)
 {
     active = 0;
+    rl_callback_handler_remove();
 
     /* We should not use printf inside of signal handlers, this is not
      * considered safe. We may, however, use write() and fsync(). */
@@ -158,8 +165,7 @@ void readline_callback(char *line)
         int i = 4;
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            SSL_write(server_ssl, "Usage: /game username\n", 29);
-            fsync(STDOUT_FILENO);
+            printf("Usage: /game username\n");
             rl_redisplay();
             return;
         }
@@ -171,23 +177,26 @@ void readline_callback(char *line)
         /* Skip whitespace */
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            SSL_write(server_ssl, "Usage: /join chatroom\n", 22);
-            fsync(STDOUT_FILENO);
+            printf("Usage: /join chatroom\n");
             rl_redisplay();
             return;
         }
         char *chatroom = strdup(&(line[i]));
+        strip(chatroom, ':');
 
         /* Process and send this information to the server. */
+        snprintf(buffer, 255, "03:%s\r\n", chatroom);
+        SSL_write(server_ssl, buffer, strlen(buffer));
 
         /* Maybe update the prompt. */
         free(prompt);
-        prompt = NULL; /* What should the new prompt look like? */
+        prompt = "> "; /* What should the new prompt look like? */
         rl_set_prompt(prompt);
         return;
     }
     if (strncmp("/list", line, 5) == 0) {
         /* Query all available chat rooms */
+        SSL_write(server_ssl, "05\r\n", 4);
         return;
     }
     if (strncmp("/roll", line, 5) == 0) {
@@ -199,9 +208,7 @@ void readline_callback(char *line)
         int i = 4;
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            SSL_write(server_ssl, "Usage: /say username message\n",
-                    29);
-            fsync(STDOUT_FILENO);
+            printf("Usage: /say username message\n");
             rl_redisplay();
             return;
         }
@@ -209,17 +216,21 @@ void readline_callback(char *line)
         int j = i+1;
         while (line[j] != '\0' && isgraph(line[j])) { j++; }
         if (line[j] == '\0') {
-            SSL_write(server_ssl, "Usage: /say username message\n",
-                    29);
-            fsync(STDOUT_FILENO);
+            printf("Usage: /say username message\n");
             rl_redisplay();
             return;
         }
-        char *receiver = strndup(&(line[i]), j - i - 1);
-        char *message = strndup(&(line[j]), j - i - 1);
+        
+        char *receiver = strndup(&(line[i]), j - i);
+        while(line[j] != '\0' && isspace(line[j])) { j++; }
+        char *message = strdup(&(line[j]));
+
+        strip(receiver, ':');
+        strip(message, ':');
 
         /* Send private message to receiver. */
-
+        snprintf(buffer, 255, "06:%s:%s\r\n", receiver, message);
+        SSL_write(server_ssl, buffer, strlen(buffer));
         return;
     }
     if (strncmp("/user", line, 5) == 0) {
@@ -227,8 +238,7 @@ void readline_callback(char *line)
         /* Skip whitespace */
         while (line[i] != '\0' && isspace(line[i])) { i++; }
         if (line[i] == '\0') {
-            SSL_write(server_ssl, "Usage: /user username\n", 22);
-            fsync(STDOUT_FILENO);
+            printf("Usage: /user username\n");
             rl_redisplay();
             return;
         }
@@ -236,20 +246,27 @@ void readline_callback(char *line)
         char passwd[48];
         getpasswd("Password: ", passwd, 48);
 
+        strip(new_user, ':');
+        strip(passwd, ':');
+
         /* Process and send this information to the server. */
+        snprintf(buffer, 255, "01:%s:%s\r\n", new_user, passwd);
+        SSL_write(server_ssl, buffer, strlen(buffer));
 
         /* Maybe update the prompt. */
         free(prompt);
-        prompt = NULL; /* What should the new prompt look like? */
+        prompt = "> "; /* What should the new prompt look like? */
         rl_set_prompt(prompt);
         return;
     }
     if (strncmp("/who", line, 4) == 0) {
         /* Query all available users */
+        SSL_write(server_ssl, "04\r\n", 4);
         return;
     }
     /* Sent the buffer to the server. */
-    snprintf(buffer, 255, "Message: %s\n", line);
+    strip(line, ':');
+    snprintf(buffer, 255, "06:%s\r\n", line);
     SSL_write(server_ssl, buffer, strlen(buffer));
     fsync(STDOUT_FILENO);
 }
@@ -322,7 +339,7 @@ void check_ssl_error(int status){
             ERR_print_errors_fp(stderr);
             exit(1);
         case SSL_ERROR_SYSCALL:
-            perror("SSL_coonnect");
+            perror("SSL_connect");
             exit(1);
         case SSL_ERROR_ZERO_RETURN:
             fprintf(stderr, "SSL error: connection closed\n");
@@ -391,28 +408,39 @@ int main(int argc, char **argv)
             break;
         }
         if (r == 0) {
-            SSL_write(server_ssl, "No message?\n", 12);
-            fsync(STDOUT_FILENO);
+            //SSL_write(server_ssl, "No message?\r\n", 13);
+            //fsync(STDOUT_FILENO);
             /* Whenever you print out a message, call this
                to reprint the current input line. */
-            rl_redisplay();
-            continue;
+            //rl_redisplay();
+            //continue;
         }
         if (FD_ISSET(STDIN_FILENO, &rfds)) {
             rl_callback_read_char();
         }
 
         /* Handle messages from the server here! */
-        if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
-            //fsync(STDOUT_FILENO);
-            printf(message);
-            rl_redisplay();
-            continue;
+        /*
+        if(r > 0){         
+            int bytes;
+            if((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
+                message[bytes] = '\0';
+                printf("%s", message);
+                //fsync(STDOUT_FILENO);
+                //printf(message);
+                rl_redisplay();
+                //continue;
+            }
         }
+        */
     }
     /* replace by code to shutdown the connection and exit
        the program. */
+    printf("Sending goodbyes to server\n");
+    SSL_write(server_ssl, "02\r\n", 4);
+    printf("Closing server file descriptor\n");
     close(server_fd);
+    printf("Freeing SSL context\n");
     SSL_CTX_free(ssl_ctx);
 }
 
