@@ -157,14 +157,13 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 
 /* Serves the given SSL connection */
 void serve(SSL* ssl){
-    char    buff[1024], reply[1024];
+    char    buff[1024];
     int     fd, bytes;
 
     if(SSL_accept(ssl) == -1){
         ERR_print_errors_fp(stderr);
     } else {
-        sprintf(reply, "Welcome to the SSL server");
-        SSL_write(ssl, reply, strlen(reply));
+        SSL_write(ssl, "Welcome.", 9);
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
             buff[bytes] = '\0';
             printf("%s", buff);
