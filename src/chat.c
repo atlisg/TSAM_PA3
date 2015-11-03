@@ -189,9 +189,11 @@ void readline_callback(char *line)
         SSL_write(server_ssl, buffer, strlen(buffer));
 
         /* Maybe update the prompt. */
-        free(prompt);
-        prompt = "> "; /* What should the new prompt look like? */
-        rl_set_prompt(prompt);
+//        free(prompt);
+//        char *new_prompt;
+//        sprintf(new_prompt,"%s@%s> ", user, chatroom);
+//        prompt = new_prompt; /* What should the new prompt look like? */
+//        rl_set_prompt(prompt);
         return;
     }
     if (strncmp("/list", line, 5) == 0) {
@@ -254,9 +256,11 @@ void readline_callback(char *line)
         SSL_write(server_ssl, buffer, strlen(buffer));
 
         /* Maybe update the prompt. */
-        free(prompt);
-        prompt = "> "; /* What should the new prompt look like? */
-        rl_set_prompt(prompt);
+//        free(prompt);
+//        char *new_prompt;
+//        sprintf(new_prompt,"%s@%s> ", new_user, chatroom);
+//        prompt = new_prompt; /* What should the new prompt look like? */
+//        rl_set_prompt(prompt);
         return;
     }
     if (strncmp("/who", line, 4) == 0) {
@@ -396,6 +400,8 @@ int main(int argc, char **argv)
         timeout.tv_usec = 0;
 
         int r = select(STDIN_FILENO + 1, &rfds, NULL, NULL, &timeout);
+        int roar = select(FD_SETSIZE, &rfds, NULL, NULL, &timeout);
+        
         if (r < 0) {
             if (errno == EINTR) {
                 /* This should either retry the call or
@@ -420,19 +426,33 @@ int main(int argc, char **argv)
         }
 
         /* Handle messages from the server here! */
-        /*
-        if(r > 0){         
-            int bytes;
-            if((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
-                message[bytes] = '\0';
-                printf("%s", message);
-                //fsync(STDOUT_FILENO);
-                //printf(message);
-                rl_redisplay();
-                //continue;
+
+        /* For parallel connections */
+/*        if (roar > 0) {
+            int i;
+            for (i = 0; i < FD_SETSIZE; ++i) {
+                if (FD_ISSET(i, &rfds)) {
+                    if (i == server_fd) {
+                        // connecting first time
+                    }
+                    else {
+                        // not first time commection
+                    }
+                }
             }
         }
-        */
+        if (r > 0) {
+            printf("inside else\n");
+            int bytes;
+            if((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
+                printf("bytes: %d\n", bytes);
+                message[bytes] = '\0';
+                printf("%s\n", message);
+                //fsync(STDOUT_FILENO);
+                //printf(message);
+                //rl_redisplay();
+            }
+        }*/
     }
     /* replace by code to shutdown the connection and exit
        the program. */

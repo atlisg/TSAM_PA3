@@ -165,15 +165,37 @@ void serve(SSL* ssl){
     } else {
         SSL_write(ssl, "Welcome.", 9);
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
+            /* /bye or /quit */
+            if (buff[0] == '0' && buff[1] == '2') {
+                return;
+            }
+            /* /user */
+            if (buff[0] == '0' && buff[1] == '1') {
+                printf("TODO: check if username is taken\n");
+                printf("TODO: add user to GTree\n");
+            }
+            /* /join */
+            if (buff[0] == '0' && buff[1] == '3') {
+                printf("TODO: check if room exists\n");
+                printf("TODO: add user to room\n");
+            }
+            /* /who */
+            if (buff[0] == '0' && buff[1] == '4') {
+                printf("TODO: send list of all users in current room\n");
+            }
+            /* /list */
+            if (buff[0] == '0' && buff[1] == '5') {
+                printf("TODO: send a list of all rooms\n");
+            }
+            /* /say */
+            if (buff[0] == '0' && buff[1] == '6') {
+                printf("TODO: find the user and send him private message\n");
+            }
             buff[bytes] = '\0';
             printf("%s", buff);
-
+            SSL_write(ssl, buff, bytes);
         }
     }
-    fd = SSL_get_fd(ssl);
-    //SSL_shutdown(ssl);
-    SSL_free(ssl);
-    close(fd);
 }
 
 int main(int argc, char **argv)
@@ -239,6 +261,12 @@ int main(int argc, char **argv)
             //printf("%d\n", g_tree_nnodes(fdTree));
             //g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
             serve(ssl);
+            log_connection(cip, cp, "disconnected");
+            
+            /* Clean up and close connection, free ssl struct */
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+            close(connfd);
         } else {
             fprintf(stdout, "No message in five seconds.\n");
             fflush(stdout);
