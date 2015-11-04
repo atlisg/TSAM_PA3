@@ -120,7 +120,8 @@ sigint_handler(int signum)
  * server_ssl and the SSL API of OpenSSL.
  */
 static int server_fd;
-static SSL *server_ssl;
+static     SSL *server_ssl;
+char       message[512];
 
 /* This variable shall point to the name of the user. The initial value
    is NULL. Set this variable to the username once the user managed to be
@@ -359,7 +360,6 @@ int main(int argc, char **argv)
     char*       server_ipaddr;
     int         server_port;
     SSL_CTX*    ssl_ctx;
-    char        message[512];
 
     if(argc < 3){
         perror("2 arguments required (-serverIP -port#");
@@ -384,6 +384,11 @@ int main(int argc, char **argv)
 
     /* Set up secure connection to the chatd server. */
     check_ssl_error(SSL_connect(server_ssl));
+    
+    /* Read welcome message from server and print it out */
+    if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
+        printf("%s\n", message);
+    }
 
     /* Read characters from the keyboard while waiting for input.
      */
@@ -391,16 +396,20 @@ int main(int argc, char **argv)
     rl_callback_handler_install(prompt, (rl_vcpfunc_t*) &readline_callback);
 
     while (active) {
-        fd_set rfds;
+        fd_set rfds, sfds;
         struct timeval timeout;
 
         FD_ZERO(&rfds);
         FD_SET(STDIN_FILENO, &rfds);
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 0;
+        FD_ZERO(&sfds);
+        FD_SET(server_fd, &sfds);
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0; 
 
+        int roar = select(server_fd + 1, &sfds, NULL, NULL, &timeout);
+        timeout.tv_sec = 0;
         int r = select(STDIN_FILENO + 1, &rfds, NULL, NULL, &timeout);
-        int roar = select(FD_SETSIZE, &rfds, NULL, NULL, &timeout);
+
         
         if (r < 0) {
             if (errno == EINTR) {
@@ -425,8 +434,17 @@ int main(int argc, char **argv)
             rl_callback_read_char();
         }
 
-        /* Handle messages from the server here! */
-
+        /* Handle messages from the server here! */ 
+        if (roar > 0) {
+            /* Read welcome message from server and print it out */
+            memset(message, 0, sizeof(message));
+            int bytes;
+            if ((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
+                write(STDOUT_FILENO, message, bytes);
+                fsync(STDOUT_FILENO);
+                rl_redisplay();
+            }
+        }
         /* For parallel connections */
 /*        if (roar > 0) {
             int i;
@@ -440,20 +458,8 @@ int main(int argc, char **argv)
                     }
                 }
             }
-        }
-        if (r > 0) {
-            printf("inside else\n");
-            int bytes;
-            if((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
-                printf("bytes: %d\n", bytes);
-                message[bytes] = '\0';
-                printf("%s\n", message);
-                //fsync(STDOUT_FILENO);
-                //printf(message);
-                //rl_redisplay();
-            }
         }*/
-    }
+   }
     /* replace by code to shutdown the connection and exit
        the program. */
     printf("Sending goodbyes to server\n");
