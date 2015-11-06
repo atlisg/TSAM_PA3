@@ -37,7 +37,9 @@
 #define SERVER_KEY  "src/fd.key"
 
 /* Global data structures used */
-GTree* fdTree;
+GTree *fdTree;
+GTree *roomTree;
+GTree *userTree;
 
 /* Converts IP address and port */
 static void ctor(const void *addr, char* ip, int* port){
@@ -53,10 +55,10 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
 {
     const struct sockaddr_in *_addr1 = addr1;
     const struct sockaddr_in *_addr2 = addr2;
-
+    
     /* If either of the pointers is NULL or the addresses
        belong to different families, we abort. */
-    g_assert((_addr1 == NULL) || (_addr2 == NULL) ||
+    g_assert((_addr1 != NULL) || (_addr2 != NULL) ||
             (_addr1->sin_family != _addr2->sin_family));
 
     if (_addr1->sin_addr.s_addr < _addr2->sin_addr.s_addr) {
@@ -81,6 +83,15 @@ void traverse_print(gpointer key, gpointer value, gpointer data){
     ctor(addr, ip, &port);
 
     printf("USER: %s:%d\n", ip, port);
+    
+}
+
+/* Prints out keys and values of userTree */
+void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
+    gpointer kei = key;
+    struct sockaddr_in *vat = value;
+    printf("key: %s\n", kei);
+    printf("value: %d\n\n", vat->sin_port);
 }
 
 /* Initalizes context */
@@ -156,7 +167,7 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 // TODO: Broadcast message
 
 /* Serves the given SSL connection */
-void serve(SSL* ssl){
+void serve(SSL* ssl, struct sockaddr_in *client){
     char    buff[1024];
     int     fd, bytes;
 
@@ -165,12 +176,26 @@ void serve(SSL* ssl){
     } else {
         SSL_write(ssl, "Welcome.", 9);
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
+            buff[bytes] = '\0';
             /* /bye or /quit */
             if (buff[0] == '0' && buff[1] == '2') {
                 return;
             }
             /* /user */
             if (buff[0] == '0' && buff[1] == '1') {
+                /* Ask for username and password */
+                const gchar *str = &buff[3];
+                GString *user_pass = g_string_new(str);
+                g_tree_insert(userTree, user_pass->str, client);
+                
+                printf("%d\n", g_tree_nnodes(userTree));
+                g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+                gpointer lol = NULL;
+                gpointer lolol = "atli:lol";
+                g_tree_lookup_extended(userTree, lolol, lol, NULL);
+                if (lol) {
+                    printf("Fann Atla!!!\nJEI\n");
+                }
                 printf("TODO: check if username is taken\n");
                 printf("TODO: add user to GTree\n");
             }
@@ -217,7 +242,14 @@ int main(int argc, char **argv)
     load_certificates(ssl_ctx);
     sockfd = open_listener(port);
 
-    fdTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
+    fdTree   = g_tree_new((GCompareFunc) sockaddr_in_cmp);
+    roomTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
+    userTree = g_tree_new((GCompareFunc) g_strcmp0);
+
+    gpointer lobby = "Lobby";
+    gpointer userList = NULL;
+    g_tree_insert(roomTree, lobby, NULL);
+    
     for (;;) {
         fd_set              rfds;
         struct timeval      tv;
@@ -257,10 +289,22 @@ int main(int argc, char **argv)
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
             
-            g_tree_insert(fdTree, &client, ssl);
-            //printf("%d\n", g_tree_nnodes(fdTree));
-            //g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
-            serve(ssl);
+            /* Add client to fdTree */
+            g_tree_insert(fdTree, ssl, &client);
+
+            /* Add user to lobby */
+            gpointer userList=NULL;
+            g_tree_lookup_extended(roomTree, lobby, NULL, userList);
+            GList *list = NULL;
+            userList = g_list_append(list, ssl);
+
+            printf("%d\n", g_tree_nnodes(fdTree));
+            g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
+
+            printf("%d\n", g_tree_nnodes(roomTree));
+            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print, NULL);
+
+            serve(ssl, &client);
             log_connection(cip, cp, "disconnected");
             
             /* Clean up and close connection, free ssl struct */
