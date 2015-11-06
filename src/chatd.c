@@ -48,7 +48,6 @@ static void ctor(const void *addr, char* ip, int* port){
     *port = ntohs(_addr->sin_port);
 }
 
-
 /* This can be used to build instances of GTree that index on
    the address of a connection. */
 int sockaddr_in_cmp(const void *addr1, const void *addr2)
@@ -90,8 +89,24 @@ void traverse_print(gpointer key, gpointer value, gpointer data){
 void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
     gpointer kei = key;
     struct sockaddr_in *vat = value;
-    printf("key: %s\n", kei);
-    printf("value: %d\n\n", vat->sin_port);
+    printf("key: %s", kei);
+    printf("value:\nip: %d\nport: %d\n", vat->sin_addr.s_addr, vat->sin_port);
+}
+
+/* Prints out all elements in a GList */
+void print_list(gpointer elem, gpointer data) {
+    struct sockaddr_in *client = &elem;
+    printf("%s\n", elem);
+}
+
+/* Prints out keys and values of roomTree */
+void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
+    GList *userlist = value;
+    
+    printf("key: %s\n", key);
+    printf("number of users in room: %d\n", g_list_length(userlist));
+    printf("value:\n");
+    g_list_foreach(userlist, (GFunc) print_list, NULL);
 }
 
 /* Initalizes context */
@@ -175,6 +190,7 @@ void serve(SSL* ssl, struct sockaddr_in *client){
         ERR_print_errors_fp(stderr);
     } else {
         SSL_write(ssl, "Welcome.", 9);
+
         while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
             buff[bytes] = '\0';
             /* /bye or /quit */
@@ -183,21 +199,32 @@ void serve(SSL* ssl, struct sockaddr_in *client){
             }
             /* /user */
             if (buff[0] == '0' && buff[1] == '1') {
+                /* Add client to fdTree */
+                g_tree_insert(fdTree, ssl, client);
+                
                 /* Ask for username and password */
                 const gchar *str = &buff[3];
                 GString *user_pass = g_string_new(str);
                 g_tree_insert(userTree, user_pass->str, client);
+
+                /* Split Gstring into two */
+                gchar **arr = g_strsplit((gchar*) user_pass->str, ":", 2);
+                gpointer username = arr[0];
                 
-                printf("%d\n", g_tree_nnodes(userTree));
+                /* Add user to lobby */
+                gpointer userList = g_tree_lookup(roomTree, "Lobby");
+                userList = g_list_append(userList, username);
+
+                printf("Number of nodes in fdTree: %d\n", g_tree_nnodes(fdTree));
+                g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
+
+                printf("Number of nodes in roomTree: %d\n", g_tree_nnodes(roomTree));
+                g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+                
+                printf("Number of nodes in userTree: %d\n", g_tree_nnodes(userTree));
                 g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-                gpointer lol = NULL;
-                gpointer lolol = "atli:lol";
-                g_tree_lookup_extended(userTree, lolol, lol, NULL);
-                if (lol) {
-                    printf("Fann Atla!!!\nJEI\n");
-                }
-                printf("TODO: check if username is taken\n");
-                printf("TODO: add user to GTree\n");
+
+                //printf("TODO: check if username is taken\n");
             }
             /* /join */
             if (buff[0] == '0' && buff[1] == '3') {
@@ -217,7 +244,7 @@ void serve(SSL* ssl, struct sockaddr_in *client){
                 printf("TODO: find the user and send him private message\n");
             }
             buff[bytes] = '\0';
-            printf("%s", buff);
+            printf("buff: %s", buff);
             SSL_write(ssl, buff, bytes);
         }
     }
@@ -243,12 +270,12 @@ int main(int argc, char **argv)
     sockfd = open_listener(port);
 
     fdTree   = g_tree_new((GCompareFunc) sockaddr_in_cmp);
-    roomTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
-    userTree = g_tree_new((GCompareFunc) g_strcmp0);
+    roomTree = g_tree_new((GCompareFunc) strcmp);
+    userTree = g_tree_new((GCompareFunc) strcmp);
 
     gpointer lobby = "Lobby";
-    gpointer userList = NULL;
-    g_tree_insert(roomTree, lobby, NULL);
+    GList *userlist = g_list_append(userlist, "GhostRider");
+    g_tree_insert(roomTree, lobby, userlist);
     
     for (;;) {
         fd_set              rfds;
@@ -289,21 +316,6 @@ int main(int argc, char **argv)
             /* Assign socket to ssl */
             SSL_set_fd(ssl, connfd);
             
-            /* Add client to fdTree */
-            g_tree_insert(fdTree, ssl, &client);
-
-            /* Add user to lobby */
-            gpointer userList=NULL;
-            g_tree_lookup_extended(roomTree, lobby, NULL, userList);
-            GList *list = NULL;
-            userList = g_list_append(list, ssl);
-
-            printf("%d\n", g_tree_nnodes(fdTree));
-            g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
-
-            printf("%d\n", g_tree_nnodes(roomTree));
-            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print, NULL);
-
             serve(ssl, &client);
             log_connection(cip, cp, "disconnected");
             
