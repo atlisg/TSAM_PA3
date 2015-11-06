@@ -41,6 +41,14 @@ GTree *fdTree;
 GTree *roomTree;
 GTree *userTree;
 
+/* Structs */
+struct User {
+    char *username;
+    char *password;
+    char *currRoom;
+    SSL *ssl;
+};
+
 /* Converts IP address and port */
 static void ctor(const void *addr, char* ip, int* port){
     const struct sockaddr_in *_addr = addr;
@@ -87,16 +95,28 @@ void traverse_print(gpointer key, gpointer value, gpointer data){
 
 /* Prints out keys and values of userTree */
 void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
-    gpointer kei = key;
-    struct sockaddr_in *vat = value;
-    printf("key: %s", kei);
-    printf("value:\nip: %d\nport: %d\n", vat->sin_addr.s_addr, vat->sin_port);
+    GString *allUsers = data;
+    int     port;
+    char    ip[INET_ADDRSTRLEN];
+    struct sockaddr_in *kei = key;
+    ctor(kei, ip, &port);
+
+    struct User *user = value;
+    printf("key:\nip: %s\nport: %d\n", ip, port);
+    printf("value: %s\n", user->username);
+
+    if (allUsers != NULL)
+        g_string_append_printf(allUsers, ":{Username: %s, IP-address: %s, Port: %d, Room: %s}", user->username, ip, port, user->currRoom);
 }
 
 /* Prints out all elements in a GList */
 void print_list(gpointer elem, gpointer data) {
-    struct sockaddr_in *client = &elem;
-    printf("%s\n", elem);
+    int     port;
+    char    ip[INET_ADDRSTRLEN];
+    struct sockaddr_in *kei = elem;
+    ctor(kei, ip, &port);
+
+    printf("ip: %s\nport: %d\n", ip, port);
 }
 
 /* Prints out keys and values of roomTree */
@@ -182,49 +202,40 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 // TODO: Broadcast message
 
 /* Serves the given SSL connection */
-void serve(SSL* ssl, struct sockaddr_in *client){
+int serve(SSL* ssl, struct sockaddr_in *client){
     char    buff[1024];
     int     fd, bytes;
 
     if(SSL_accept(ssl) == -1){
         ERR_print_errors_fp(stderr);
     } else {
-        SSL_write(ssl, "Welcome.", 9);
+        printf("%s", buff);
 
-        while((bytes = SSL_read(ssl, buff, sizeof(buff))) > 0){
+        g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+        g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+
+        if ((bytes = SSL_read(ssl, buff, sizeof(buff))-1) > 0) {
             buff[bytes] = '\0';
             /* /bye or /quit */
             if (buff[0] == '0' && buff[1] == '2') {
-                return;
+                return 0;
             }
             /* /user */
             if (buff[0] == '0' && buff[1] == '1') {
-                /* Add client to fdTree */
-                g_tree_insert(fdTree, ssl, client);
-                
                 /* Ask for username and password */
                 const gchar *str = &buff[3];
                 GString *user_pass = g_string_new(str);
-                g_tree_insert(userTree, user_pass->str, client);
 
                 /* Split Gstring into two */
                 gchar **arr = g_strsplit((gchar*) user_pass->str, ":", 2);
-                gpointer username = arr[0];
-                
-                /* Add user to lobby */
-                gpointer userList = g_tree_lookup(roomTree, "Lobby");
-                userList = g_list_append(userList, username);
 
-                printf("Number of nodes in fdTree: %d\n", g_tree_nnodes(fdTree));
-                g_tree_foreach(fdTree, (GTraverseFunc) traverse_print, NULL);
+                /* Edit the client's username (TODO: if not taken) */
+                struct User *userInfo = g_tree_lookup(userTree, client);
+                userInfo->username = arr[0];
+                userInfo->password = arr[1];
 
-                printf("Number of nodes in roomTree: %d\n", g_tree_nnodes(roomTree));
-                g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
-                
-                printf("Number of nodes in userTree: %d\n", g_tree_nnodes(userTree));
                 g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-
-                //printf("TODO: check if username is taken\n");
+                g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
             }
             /* /join */
             if (buff[0] == '0' && buff[1] == '3') {
@@ -233,7 +244,9 @@ void serve(SSL* ssl, struct sockaddr_in *client){
             }
             /* /who */
             if (buff[0] == '0' && buff[1] == '4') {
-                printf("TODO: send list of all users in current room\n");
+                GString *allUsers = g_string_new("12");
+                g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, allUsers);
+                SSL_write(ssl, allUsers->str, allUsers->len);
             }
             /* /list */
             if (buff[0] == '0' && buff[1] == '5') {
@@ -243,15 +256,35 @@ void serve(SSL* ssl, struct sockaddr_in *client){
             if (buff[0] == '0' && buff[1] == '6') {
                 printf("TODO: find the user and send him private message\n");
             }
-            buff[bytes] = '\0';
-            printf("buff: %s", buff);
-            SSL_write(ssl, buff, bytes);
+            return 1;
         }
     }
 }
 
+void initializeUser(SSL* ssl, struct sockaddr_in *client) {
+    SSL_write(ssl, "Welcome.", 9);
+
+    struct User *newUser = malloc(sizeof(struct User));
+    newUser->username = "Guest";
+    newUser->password = "";
+    newUser->currRoom = "Lobby";
+    newUser->ssl = ssl;
+
+    /* Add client to userTree */
+    g_tree_insert(userTree, client, newUser);
+    /* Add user to lobby; create lobby if definitely non existent */
+    GList *userList = g_tree_lookup(roomTree, newUser->currRoom);
+    if (userList == NULL) {
+        userList = g_list_append(userList, client);
+        g_tree_insert(roomTree, newUser->currRoom, userList);
+    } else {
+        userList = g_list_append(userList, client);
+    }    
+}
+
 int main(int argc, char **argv)
 {
+    gboolean open_socket = FALSE;
     int         sockfd, port;
     char        message[512];
     SSL_CTX*    ssl_ctx;
@@ -271,58 +304,79 @@ int main(int argc, char **argv)
 
     fdTree   = g_tree_new((GCompareFunc) sockaddr_in_cmp);
     roomTree = g_tree_new((GCompareFunc) strcmp);
-    userTree = g_tree_new((GCompareFunc) strcmp);
+    userTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
 
-    gpointer lobby = "Lobby";
-    GList *userlist = g_list_append(userlist, "GhostRider");
-    g_tree_insert(roomTree, lobby, userlist);
-    
+    fd_set              rfds, afds;
+
+    /* Check whether there is data on the socket fd. */
+    FD_ZERO(&afds);
+    FD_SET(sockfd, &afds);
+        
     for (;;) {
-        fd_set              rfds;
         struct timeval      tv;
         struct sockaddr_in  client;
         int                 retval;
-
-        /* Check whether there is data on the socket fd. */
-        FD_ZERO(&rfds);
-        FD_SET(sockfd, &rfds);
-
+        
         /* Wait for five seconds. */ 
         tv.tv_sec = 5;
         tv.tv_usec = 0;
+
+        rfds = afds;
         
-        retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+        retval = select(FD_SETSIZE, &rfds, NULL, NULL, &tv);
         if (retval == -1) {
             perror("select()");
         } else if (retval > 0) {
-            int         connfd, cp;
+            int         connfd, cp, i;
             SSL*        ssl;
             char        cip[INET_ADDRSTRLEN]; 
-            socklen_t   len = (socklen_t) sizeof(client);
 
-            /* Data is available, receive it. */
-            assert(FD_ISSET(sockfd, &rfds));
+            for (i = 0; i < FD_SETSIZE; ++i) {
+                if (FD_ISSET(i, &rfds)) {
+                    /* Connecting to original socket */
+                    if (i == sockfd) {
+                        printf("inside if, i = %d\n", i);
 
-            /* Accept connection */
-            connfd = accept(sockfd, (struct sockaddr *) &client, &len);
-           
-            /* Get client's IP address and port */ 
-            ctor(&client, cip, &cp);
-            log_connection(cip, cp, "connected");
+                        /* Copy to len, since receive may change it */
+                        socklen_t   len = (socklen_t) sizeof(client);
 
-            /* Create new SSL struct */
-            ssl = SSL_new(ssl_ctx);
+                        /* Data is available, receive it. */
+                        assert(FD_ISSET(sockfd, &rfds));
+                        
+                        /* Accept connection */
+                        connfd = accept(sockfd, (struct sockaddr *) &client, &len);
 
-            /* Assign socket to ssl */
-            SSL_set_fd(ssl, connfd);
-            
-            serve(ssl, &client);
-            log_connection(cip, cp, "disconnected");
-            
-            /* Clean up and close connection, free ssl struct */
-            SSL_shutdown(ssl);
-            SSL_free(ssl);
-            close(connfd);
+                        /* Get client's IP address and port */ 
+                        ctor(&client, cip, &cp);
+                        log_connection(cip, cp, "connected");
+
+                        /* Create new SSL struct */
+                        ssl = SSL_new(ssl_ctx);
+
+                        /* Assign socket to ssl */
+                        SSL_set_fd(ssl, connfd);
+
+                        initializeUser(ssl, &client);
+                        printf("User initialized\n");
+
+                        open_socket = TRUE;
+                        FD_SET(connfd, &afds);
+                    } else {
+                        printf("inside else, i = %d\n", i);
+                        if (!serve(ssl, &client)) {
+                            /* The users wants to disconnect */
+                            log_connection(cip, cp, "disconnected");
+
+                            /* Clean up and close connection, free ssl struct */
+                            SSL_shutdown(ssl);
+                            SSL_free(ssl);
+                            close(connfd);
+                        }
+
+                        FD_CLR(i, &afds);
+                    }
+                }
+            }           
         } else {
             fprintf(stdout, "No message in five seconds.\n");
             fflush(stdout);

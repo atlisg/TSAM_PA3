@@ -386,9 +386,9 @@ int main(int argc, char **argv)
     check_ssl_error(SSL_connect(server_ssl));
     
     /* Read welcome message from server and print it out */
-    if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
+    /*if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
         printf("%s\n", message);
-    }
+    }*/
 
     /* Read characters from the keyboard while waiting for input.
      */
