@@ -37,7 +37,6 @@
 #define SERVER_KEY  "src/fd.key"
 
 /* Global data structures used */
-GTree *fdTree;
 GTree *roomTree;
 GTree *userTree;
 
@@ -106,8 +105,10 @@ void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
     printf("value: %s\n", user->username);
 
     if (allUsers != NULL)
-        g_string_append_printf(allUsers, ":{Username: %s, IP-address: %s, Port: %d, Room: %s}", user->username, ip, port, user->currRoom);
-}
+        g_string_append_printf(allUsers, 
+        ":{Username: %s, IP-address: %s, Port: %d, Room: %s}", 
+        user->username, ip, port, user->currRoom);
+    }
 
 /* Prints out all elements in a GList */
 void print_list(gpointer elem, gpointer data) {
@@ -121,8 +122,12 @@ void print_list(gpointer elem, gpointer data) {
 
 /* Prints out keys and values of roomTree */
 void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
-    GList *userlist = value;
-    
+    GList   *userlist = value;
+    GString *allRooms = data;
+
+    if (allRooms != NULL) {
+        g_string_append_printf(allRooms, ":%s", key);
+    }
     printf("key: %s\n", key);
     printf("number of users in room: %d\n", g_list_length(userlist));
     printf("value:\n");
@@ -231,12 +236,31 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             userInfo->username = arr[0];
             userInfo->password = arr[1];
 
+            //TODO send response to client!
+            printf("Number of nodes in userTree: %d\n", g_tree_nnodes(userTree));
             g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+            printf("Number of nodes in roomTree: %d\n", g_tree_nnodes(roomTree));
             g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
             return 1;
         }
         /* /join */
         if (buff[0] == '0' && buff[1] == '3') {
+            const gchar *str = &buff[3];
+            GString *room = g_string_new(str);
+
+            GList *userlist = g_tree_lookup(roomTree, room->str);
+            if (userlist == NULL) {
+                printf("Inserting to roomTree with key: %s\n", room->str);
+                g_tree_insert(roomTree, room->str, userlist);
+            }
+            userlist = g_list_append(userlist, client);
+            GString *reply = g_string_new("11:");
+            g_string_append(room, "\r\n");
+            g_string_append(reply, room->str);
+            SSL_write(ssl, reply->str, reply->len);
+            printf("Number of nodes in roomTree: %d\n", g_tree_nnodes(roomTree));
+            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+
             printf("TODO: check if room exists\n");
             printf("TODO: add user to room\n");
             return 1;
@@ -245,12 +269,16 @@ int serve(SSL* ssl, struct sockaddr_in *client){
         if (buff[0] == '0' && buff[1] == '4') {
             GString *allUsers = g_string_new("12");
             g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, allUsers);
+            g_string_append(allUsers, "\r\n");
             SSL_write(ssl, allUsers->str, allUsers->len);
             return 1;
         }
         /* /list */
         if (buff[0] == '0' && buff[1] == '5') {
-            printf("TODO: send a list of all rooms\n");
+            GString *allRooms = g_string_new("13");
+            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, allRooms);
+            g_string_append(allRooms, "\r\n");
+            SSL_write(ssl, allRooms->str, allRooms->len);
             return 1;
         }
         /* /say */
@@ -306,7 +334,6 @@ int main(int argc, char **argv)
     load_certificates(ssl_ctx);
     sockfd = open_listener(port);
 
-    fdTree   = g_tree_new((GCompareFunc) sockaddr_in_cmp);
     roomTree = g_tree_new((GCompareFunc) strcmp);
     userTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
 
