@@ -40,6 +40,7 @@
 GTree *fdTree;
 GTree *roomTree;
 GTree *userTree;
+int numClients;
 
 /* Structs */
 struct User {
@@ -90,7 +91,6 @@ void traverse_print(gpointer key, gpointer value, gpointer data){
     ctor(addr, ip, &port);
 
     printf("USER: %s:%d\n", ip, port);
-    
 }
 
 /* Prints out keys and values of userTree */
@@ -205,9 +205,6 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 int serve(SSL* ssl, struct sockaddr_in *client){
     char    buff[1024];
     int     fd, bytes;
-    //g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-    //g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
-  
 
     //printf("before SSL_read\n");
     if ((bytes = SSL_read(ssl, buff, sizeof(buff))-1) > 0) {
@@ -266,22 +263,48 @@ int serve(SSL* ssl, struct sockaddr_in *client){
 void initializeUser(SSL* ssl, struct sockaddr_in *client) {
     printf("SSL_write welcome: %d\n", SSL_write(ssl, "Welcome.\r\n", 10));
 
+    /* Initializing new User struct */
+    GString *username = g_string_new(NULL);
+    g_string_printf(username, "%s%d", "Guest", numClients);
     struct User *newUser = malloc(sizeof(struct User));
-    newUser->username = "Guest";
+    newUser->username = username->str;
     newUser->password = "";
     newUser->currRoom = "Lobby";
     newUser->ssl = ssl;
 
+    /* Copying sockaddr_in for the key of the new User */
+    struct sockaddr_in *newClient = malloc(sizeof(client));
+    memcpy(newClient, client, sizeof(client));
+
+    /* Check if the user already exists? */
+    gpointer entry = g_tree_lookup(userTree, newClient);
+    if (entry) {
+        printf("found this user!\n");
+    }
+
     /* Add client to userTree */
-    g_tree_insert(userTree, client, newUser);
+    printf("Inserting new user into userTree!\n");
+    g_tree_insert(userTree, newClient, newUser);
+
+    // checking how the userTree looks like now
+    printf("------------------\nuserTree (size = %d):\n", g_tree_nnodes(userTree));
+    g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+    printf("------------------\n");
+
     /* Add user to lobby; create lobby if definitely non existent */
     GList *userList = g_tree_lookup(roomTree, newUser->currRoom);
     if (userList == NULL) {
-        userList = g_list_append(userList, client);
+        printf("Creating Lobby!\n");
+        userList = g_list_append(userList, newClient);
         g_tree_insert(roomTree, newUser->currRoom, userList);
     } else {
-        userList = g_list_append(userList, client);
+        printf("Adding new user to Lobby!\n");
+        userList = g_list_append(userList, newClient);
     }    
+    printf("------------------\nUsers in Lobby now:\n");
+    g_list_foreach(userList, (GFunc) print_list, NULL);
+    printf("------------------\n");
+    numClients++;
 }
 
 int main(int argc, char **argv)
@@ -289,6 +312,7 @@ int main(int argc, char **argv)
     gboolean open_socket = FALSE;
     int         sockfd, port;
     char        message[512];
+    numClients = 1;
     SSL_CTX*    ssl_ctx;
     SSL*        SSL_fds[FD_SETSIZE];
     fd_set      rfds, afds;
