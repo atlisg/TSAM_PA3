@@ -125,13 +125,14 @@ void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
     GList   *userlist = value;
     GString *allRooms = data;
 
-    if (allRooms != NULL) {
-        g_string_append_printf(allRooms, ":%s", key);
-    }
-    printf("key: %s\n", key);
+    printf("key: %s\n", (char *) key);
     printf("number of users in room: %d\n", g_list_length(userlist));
     printf("value:\n");
     g_list_foreach(userlist, (GFunc) print_list, NULL);
+
+    if (allRooms != NULL) {
+        g_string_append_printf(allRooms, ":{%s}", (char *) key);
+    }
 }
 
 /* Initalizes context */
@@ -212,9 +213,9 @@ int serve(SSL* ssl, struct sockaddr_in *client){
     int     fd, bytes;
 
     //printf("before SSL_read\n");
-    if ((bytes = SSL_read(ssl, buff, sizeof(buff))-1) > 0) {
+    if ((bytes = SSL_read(ssl, buff, sizeof(buff))-2) > 0) {
         buff[bytes] = '\0';
-        printf("%s", buff);
+        printf("%s\n", buff);
         /* /bye or /quit */
         if (buff[0] == '0' && buff[1] == '2') {
             return 0;
@@ -247,15 +248,19 @@ int serve(SSL* ssl, struct sockaddr_in *client){
 
             GList *userlist = g_tree_lookup(roomTree, room->str);
             if (userlist == NULL) {
+                userlist = g_list_append(userlist, client);
                 printf("Inserting to roomTree with key: %s\n", room->str);
                 g_tree_insert(roomTree, room->str, userlist);
+            } else {
+                userlist = g_list_append(userlist, client);
             }
-            userlist = g_list_append(userlist, client);
+
             GString *reply = g_string_new("11:");
-            g_string_append(room, "\r\n");
             g_string_append(reply, room->str);
+            g_string_append(reply, "\r\n");
             SSL_write(ssl, reply->str, reply->len);
             printf("Number of nodes in roomTree: %d\n", g_tree_nnodes(roomTree));
+            printf("Number of users in new room: %d\n", g_list_length(userlist));
             g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
 
             printf("TODO: check if room exists\n");
@@ -343,6 +348,7 @@ int main(int argc, char **argv)
     numClients = 1;
     SSL_CTX*    ssl_ctx;
     SSL*        SSL_fds[FD_SETSIZE];
+    struct sockaddr_in clients[FD_SETSIZE];
     fd_set      rfds, afds;
 
     if(argc < 2){
@@ -420,6 +426,7 @@ int main(int argc, char **argv)
                         
                         printf("connfd: %d\n", connfd);
                         SSL_fds[connfd] = ssl;
+                        clients[connfd] = client;
                         FD_SET(connfd, &afds);
 
                         /* Get client's IP address and port */ 
@@ -427,6 +434,7 @@ int main(int argc, char **argv)
                         log_connection(cip, cp, "connected");
                     } else {
                         ssl = SSL_fds[i];
+                        client = clients[i];
                         //printf("SSL fd: %d\n", SSL_get_fd(ssl));
                         //printf("SSL_pending: %d\n", SSL_pending(ssl));
                         
