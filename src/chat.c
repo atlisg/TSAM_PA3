@@ -350,6 +350,10 @@ void check_ssl_error(int status){
             fprintf(stderr, "SSL error: connection closed\n");
             ERR_print_errors_fp(stderr);
             exit(1);
+        default:
+            fprintf(stderr, "SSL error: unkown error\n");
+            ERR_print_errors_fp(stderr);
+            exit(1);
     }
 }
 
@@ -381,14 +385,15 @@ int main(int argc, char **argv)
 
     /* Use the socket for the SSL connection. */
     SSL_set_fd(server_ssl, server_fd);
-
     /* Set up secure connection to the chatd server. */
     check_ssl_error(SSL_connect(server_ssl));
     
     /* Read welcome message from server and print it out */
-    /*if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
+    /*
+    if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
         printf("%s\n", message);
-    }*/
+    }
+    */
 
     /* Read characters from the keyboard while waiting for input.
      */

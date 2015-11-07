@@ -205,64 +205,66 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 int serve(SSL* ssl, struct sockaddr_in *client){
     char    buff[1024];
     int     fd, bytes;
+    //g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+    //g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+  
 
-    if(SSL_accept(ssl) == -1){
-        ERR_print_errors_fp(stderr);
-    } else {
+    //printf("before SSL_read\n");
+    if ((bytes = SSL_read(ssl, buff, sizeof(buff))-1) > 0) {
+        buff[bytes] = '\0';
         printf("%s", buff);
+        /* /bye or /quit */
+        if (buff[0] == '0' && buff[1] == '2') {
+            return 0;
+        }
+        /* /user */
+        if (buff[0] == '0' && buff[1] == '1') {
+            /* Ask for username and password */
+            const gchar *str = &buff[3];
+            GString *user_pass = g_string_new(str);
 
-        g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-        g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+            /* Split Gstring into two */
+            gchar **arr = g_strsplit((gchar*) user_pass->str, ":", 2);
 
-        if ((bytes = SSL_read(ssl, buff, sizeof(buff))-1) > 0) {
-            buff[bytes] = '\0';
-            /* /bye or /quit */
-            if (buff[0] == '0' && buff[1] == '2') {
-                return 0;
-            }
-            /* /user */
-            if (buff[0] == '0' && buff[1] == '1') {
-                /* Ask for username and password */
-                const gchar *str = &buff[3];
-                GString *user_pass = g_string_new(str);
+            /* Edit the client's username (TODO: if not taken) */
+            struct User *userInfo = g_tree_lookup(userTree, client);
+            userInfo->username = arr[0];
+            userInfo->password = arr[1];
 
-                /* Split Gstring into two */
-                gchar **arr = g_strsplit((gchar*) user_pass->str, ":", 2);
-
-                /* Edit the client's username (TODO: if not taken) */
-                struct User *userInfo = g_tree_lookup(userTree, client);
-                userInfo->username = arr[0];
-                userInfo->password = arr[1];
-
-                g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-                g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
-            }
-            /* /join */
-            if (buff[0] == '0' && buff[1] == '3') {
-                printf("TODO: check if room exists\n");
-                printf("TODO: add user to room\n");
-            }
-            /* /who */
-            if (buff[0] == '0' && buff[1] == '4') {
-                GString *allUsers = g_string_new("12");
-                g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, allUsers);
-                SSL_write(ssl, allUsers->str, allUsers->len);
-            }
-            /* /list */
-            if (buff[0] == '0' && buff[1] == '5') {
-                printf("TODO: send a list of all rooms\n");
-            }
-            /* /say */
-            if (buff[0] == '0' && buff[1] == '6') {
-                printf("TODO: find the user and send him private message\n");
-            }
+            g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
+            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, NULL);
+            return 1;
+        }
+        /* /join */
+        if (buff[0] == '0' && buff[1] == '3') {
+            printf("TODO: check if room exists\n");
+            printf("TODO: add user to room\n");
+            return 1;
+        }
+        /* /who */
+        if (buff[0] == '0' && buff[1] == '4') {
+            GString *allUsers = g_string_new("12");
+            g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, allUsers);
+            SSL_write(ssl, allUsers->str, allUsers->len);
+            return 1;
+        }
+        /* /list */
+        if (buff[0] == '0' && buff[1] == '5') {
+            printf("TODO: send a list of all rooms\n");
+            return 1;
+        }
+        /* /say */
+        if (buff[0] == '0' && buff[1] == '6') {
+            printf("TODO: find the user and send him private message\n");
             return 1;
         }
     }
+    //printf("Serve returning 0\n");
+    return 1;
 }
 
 void initializeUser(SSL* ssl, struct sockaddr_in *client) {
-    SSL_write(ssl, "Welcome.", 9);
+    printf("SSL_write welcome: %d\n", SSL_write(ssl, "Welcome.\r\n", 10));
 
     struct User *newUser = malloc(sizeof(struct User));
     newUser->username = "Guest";
@@ -288,6 +290,8 @@ int main(int argc, char **argv)
     int         sockfd, port;
     char        message[512];
     SSL_CTX*    ssl_ctx;
+    SSL*        SSL_fds[FD_SETSIZE];
+    fd_set      rfds, afds;
 
     if(argc < 2){
         perror("1 argument required (port#)");
@@ -306,7 +310,6 @@ int main(int argc, char **argv)
     roomTree = g_tree_new((GCompareFunc) strcmp);
     userTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
 
-    fd_set              rfds, afds;
 
     /* Check whether there is data on the socket fd. */
     FD_ZERO(&afds);
@@ -335,8 +338,6 @@ int main(int argc, char **argv)
                 if (FD_ISSET(i, &rfds)) {
                     /* Connecting to original socket */
                     if (i == sockfd) {
-                        printf("inside if, i = %d\n", i);
-
                         /* Copy to len, since receive may change it */
                         socklen_t   len = (socklen_t) sizeof(client);
 
@@ -346,34 +347,64 @@ int main(int argc, char **argv)
                         /* Accept connection */
                         connfd = accept(sockfd, (struct sockaddr *) &client, &len);
 
-                        /* Get client's IP address and port */ 
-                        ctor(&client, cip, &cp);
-                        log_connection(cip, cp, "connected");
-
                         /* Create new SSL struct */
                         ssl = SSL_new(ssl_ctx);
-
+ 
                         /* Assign socket to ssl */
                         SSL_set_fd(ssl, connfd);
 
-                        initializeUser(ssl, &client);
-                        printf("User initialized\n");
-
-                        open_socket = TRUE;
-                        FD_SET(connfd, &afds);
-                    } else {
-                        printf("inside else, i = %d\n", i);
-                        if (!serve(ssl, &client)) {
-                            /* The users wants to disconnect */
-                            log_connection(cip, cp, "disconnected");
-
-                            /* Clean up and close connection, free ssl struct */
+                        /* Attempt SSL connection to client */
+                        
+                        if(SSL_accept(ssl) == -1){
                             SSL_shutdown(ssl);
                             SSL_free(ssl);
                             close(connfd);
+                            ERR_print_errors_fp(stderr);
+                            exit(1);
                         }
+                        
 
-                        FD_CLR(i, &afds);
+                        initializeUser(ssl, &client);
+                        printf("User initialized\n");
+                        
+                        printf("connfd: %d\n", connfd);
+                        SSL_fds[connfd] = ssl;
+                        FD_SET(connfd, &afds);
+
+                        /* Get client's IP address and port */ 
+                        ctor(&client, cip, &cp);
+                        log_connection(cip, cp, "connected");
+                    } else {
+                        ssl = SSL_fds[i];
+                        //printf("SSL fd: %d\n", SSL_get_fd(ssl));
+                        //printf("SSL_pending: %d\n", SSL_pending(ssl));
+                        
+                        /* Attempt SSL connection to client */
+                        /*
+                        if(SSL_accept(ssl) == -1){
+                            SSL_shutdown(ssl);
+                            SSL_free(ssl);
+                            close(connfd);
+                            ERR_print_errors_fp(stderr);
+                            exit(1);
+                        }
+                        */
+
+
+                        //if(SSL_pending(ssl)){
+                            //printf("SSL_pending: %d\n", SSL_pending(ssl));
+                            if (!serve(ssl, &client)) {
+                                /* The users wants to disconnect */
+                                log_connection(cip, cp, "disconnected");
+
+                                /* Clean up and close connection, free ssl struct */
+                                SSL_shutdown(ssl);
+                                SSL_free(ssl);
+                                close(connfd);
+                                FD_CLR(i, &afds);
+                            }
+                        //}
+
                     }
                 }
             }           
