@@ -81,20 +81,17 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
 }
 
 /* Prints out keys and values of userTree */
-void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
+gboolean traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
     int     port;
     char    ip[INET_ADDRSTRLEN];
     struct sockaddr_in *client = key;
     ctor(client, ip, &port);
-    GString *dummy = data;
 
     struct User *user = value;
     printf("~KEY~ client: %s:%d\n", ip, port);
     printf("~VAL~ username: %s, room: %s\n", user->username, user->currRoom);
 
-    if (dummy != NULL) {
-        g_string_append(dummy, "dummy");
-    }
+    return FALSE;
 }
 
 /* Colects info from userTree */
@@ -129,7 +126,7 @@ void print_list(gpointer elem, gpointer data) {
 }
 
 /* Prints out keys and values of roomTree */
-void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
+gboolean traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
     GList   *userlist = value;
 
     printf("~KEY~ room: %s\n", (char *) key);
@@ -137,6 +134,8 @@ void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
     printf("      list of users:\n");
     GString *placeholder = g_string_new(NULL);
     g_list_foreach(userlist, (GFunc) print_list, placeholder);
+
+    return FALSE;
 }
 
 /* collects info from roomTree */
@@ -254,18 +253,18 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
 
 /* Print tree */
 void print() {
-    GString *dummy = g_string_new(NULL);
+//    GString *dummy = g_string_new(NULL);
     printf("\n-----------Displaying userTree---------\n");
     printf("Number of nodes in tree: %d\n", 
             g_tree_nnodes(userTree));
     g_tree_foreach(userTree, 
-            (GTraverseFunc) traverse_print_userTree, dummy);
+            (GTraverseFunc) traverse_print_userTree, NULL);
 
     printf("\n-----------Displaying roomTree---------\n");
     printf("Number of nodes in tree: %d\n", 
             g_tree_nnodes(roomTree));
     g_tree_foreach(roomTree, 
-            (GTraverseFunc) traverse_print_roomTree, dummy);
+            (GTraverseFunc) traverse_print_roomTree, NULL);
 }
 
 /* Send to Clients in Current room */
