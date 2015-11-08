@@ -216,24 +216,28 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 
 /* Switch rooms */
 void switchRooms(struct sockaddr_in *client, char *newRoom) {
-    struct User *userInfo = g_tree_lookup(userTree, client);
-    GList *currRoomUsers = g_tree_lookup(roomTree, userInfo->currRoom);
-    if (g_list_length(currRoomUsers) <= 1) {
-        g_tree_remove(roomTree, userInfo->currRoom);
-    } else {
-        currRoomUsers = g_list_remove(currRoomUsers, client);
-    }
-    userInfo->currRoom = newRoom;
-    
+    /* Fetch the user's info and client struct */
+    struct sockaddr_in *userClient;
+    struct User *userInfo;
+    g_tree_lookup_extended(userTree, client, &userClient, &userInfo);
+        
     if (newRoom != NULL) {
-        /* Add room to tree if it doesn't exist and add user to new room */
-        GList *userlist = g_tree_lookup(roomTree, newRoom);
-        if (userlist == NULL) {
-            userlist = g_list_append(userlist, client);
-            g_tree_insert(roomTree, newRoom, userlist);
+        /* Check if the room he's leaving will become empty */
+        GList *currRoomUsers = g_tree_lookup(roomTree, userInfo->currRoom);
+        if (g_list_length(currRoomUsers) <= 1) {
+            /* If so, remove it */
+            g_tree_remove(roomTree, userInfo->currRoom);
         } else {
-            userlist = g_list_append(userlist, client);
+            currRoomUsers = g_list_remove(currRoomUsers, userClient);
         }
+        userInfo->currRoom = newRoom;
+
+        /* Find the current userlist of this room */
+        GList *userlist = g_tree_lookup(roomTree, newRoom);
+        /* Add him to the list of users in room */
+        userlist = g_list_append(userlist, userClient);
+        /* Create/update the room  */
+        g_tree_insert(roomTree, newRoom, userlist);
     }
 }
 
