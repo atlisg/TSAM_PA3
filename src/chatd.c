@@ -229,6 +229,7 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
             g_tree_remove(roomTree, userInfo->currRoom);
         } else {
             currRoomUsers = g_list_remove(currRoomUsers, userClient);
+            g_tree_insert(roomTree, userInfo->currRoom, currRoomUsers);
         }
         userInfo->currRoom = newRoom;
 
