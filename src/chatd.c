@@ -80,29 +80,31 @@ int sockaddr_in_cmp(const void *addr1, const void *addr2)
     return 0;
 }
 
-/* Prints out values as GTree is traversed */
-void traverse_print(gpointer key, gpointer value, gpointer data){
-    int     port;
-    char    ip[INET_ADDRSTRLEN];
-
-    struct sockaddr_in *addr = key;
-    
-    ctor(addr, ip, &port);
-
-    printf("USER: %s:%d\n", ip, port);
-}
-
 /* Prints out keys and values of userTree */
 void traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
+    int     port;
+    char    ip[INET_ADDRSTRLEN];
+    struct sockaddr_in *client = key;
+    ctor(client, ip, &port);
+    GString *dummy = data;
+
+    struct User *user = value;
+    printf("~KEY~ client: %s:%d\n", ip, port);
+    printf("~VAL~ username: %s, room: %s\n", user->username, user->currRoom);
+
+    if (dummy != NULL) {
+        g_string_append(dummy, "dummy");
+    }
+}
+
+/* Colects info from userTree */
+void traverse_collect_userTree(gpointer key, gpointer value, gpointer data) {
     GString *allUsers = data;
     int     port;
     char    ip[INET_ADDRSTRLEN];
     struct sockaddr_in *client = key;
     ctor(client, ip, &port);
-
     struct User *user = value;
-    printf("~KEY~ client: %s:%d\n", ip, port);
-    printf("~VAL~ username: %s, room: %s\n", user->username, user->currRoom);
 
     if (allUsers != NULL) {
         g_string_append_printf(allUsers, 
@@ -129,13 +131,18 @@ void print_list(gpointer elem, gpointer data) {
 /* Prints out keys and values of roomTree */
 void traverse_print_roomTree(gpointer key, gpointer value, gpointer data) {
     GList   *userlist = value;
-    GString *allRooms = data;
 
     printf("~KEY~ room: %s\n", (char *) key);
     printf("~VAL~ number of users in room: %d\n", g_list_length(userlist));
     printf("      list of users:\n");
     GString *placeholder = g_string_new(NULL);
     g_list_foreach(userlist, (GFunc) print_list, placeholder);
+}
+
+/* collects info from roomTree */
+void traverse_collect_roomTree(gpointer key, gpointer value, gpointer data) {
+    GList   *userlist = value;
+    GString *allRooms = data;
 
     if (allRooms != NULL) {
         g_string_append_printf(allRooms, ":{%s}", (char *) key);
@@ -220,24 +227,28 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
     struct sockaddr_in *userClient;
     struct User *userInfo;
     g_tree_lookup_extended(userTree, client, &userClient, &userInfo);
-        
-    if (newRoom != NULL) {
-        /* Check if the room he's leaving will become empty */
-        GList *currRoomUsers = g_tree_lookup(roomTree, userInfo->currRoom);
-        if (g_list_length(currRoomUsers) <= 1) {
-            /* If so, remove it */
-            g_tree_remove(roomTree, userInfo->currRoom);
-        } else {
-            currRoomUsers = g_list_remove(currRoomUsers, userClient);
-        }
-        userInfo->currRoom = newRoom;
+    
+    /* Check if the room he's leaving will become empty */
+    GList *currRoomUsers = g_tree_lookup(roomTree, userInfo->currRoom);
 
+    if (g_list_length(currRoomUsers) <= 1) {
+        /* If so, remove it */
+        g_tree_remove(roomTree, userInfo->currRoom);
+    } else {
+        currRoomUsers = g_list_remove(currRoomUsers, userClient);
+    }
+    userInfo->currRoom = newRoom;
+
+    if (newRoom != NULL) {
         /* Find the current userlist of this room */
         GList *userlist = g_tree_lookup(roomTree, newRoom);
         /* Add him to the list of users in room */
         userlist = g_list_append(userlist, userClient);
         /* Create/update the room  */
         g_tree_insert(roomTree, newRoom, userlist);
+    } else {
+        /* Remove from userTree */
+        g_tree_remove(userTree, userClient);
     }
 }
 
@@ -255,6 +266,33 @@ void print() {
             g_tree_nnodes(roomTree));
     g_tree_foreach(roomTree, 
             (GTraverseFunc) traverse_print_roomTree, dummy);
+}
+
+/* Send to Clients in Current room */
+void sendMsg(gpointer elem, gpointer data) {
+    struct sockaddr_in *client = elem;
+    struct User *user = g_tree_lookup(userTree, client);
+
+    /* Send message to all users in room */
+    GString *message = g_string_new(data);
+    SSL_write(user->ssl, message->str, message->len);
+}
+
+/* Broadcast message to all users in room */
+void broadcast(struct sockaddr_in *client, const char *message) {
+    struct sockaddr_in *currClient;
+    struct User *currUser;
+
+    /* Fetch info from userTree */
+    g_tree_lookup_extended(userTree, client, &currClient, &currUser);
+
+    /* Fetch list of users in current room */
+    GList *roomList = g_tree_lookup(roomTree, currUser->currRoom);
+
+    /* Build and send response to all users in room */
+    GString *start = g_string_new("09:");
+    g_string_append_printf(start, "%s:%s\r\n", currUser->username, message);
+    g_list_foreach(roomList, (GFunc) sendMsg, start->str);
 }
 
 /* Serves the given SSL connection */
@@ -308,7 +346,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
         if (buff[0] == '0' && buff[1] == '4') {
             /* Build and send response to client */
             GString *allUsers = g_string_new("12");
-            g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, allUsers);
+            g_tree_foreach(userTree, (GTraverseFunc) traverse_collect_userTree, allUsers);
             g_string_append(allUsers, "\r\n");
             SSL_write(ssl, allUsers->str, allUsers->len);
             print();
@@ -318,7 +356,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
         if (buff[0] == '0' && buff[1] == '5') {
             /* Build and send response to client */
             GString *allRooms = g_string_new("13");
-            g_tree_foreach(roomTree, (GTraverseFunc) traverse_print_roomTree, allRooms);
+            g_tree_foreach(roomTree, (GTraverseFunc) traverse_collect_roomTree, allRooms);
             g_string_append(allRooms, "\r\n");
             SSL_write(ssl, allRooms->str, allRooms->len);
             print();
@@ -326,7 +364,11 @@ int serve(SSL* ssl, struct sockaddr_in *client){
         }
         /* /say */
         if (buff[0] == '0' && buff[1] == '6') {
-            printf("TODO: find the user and send him private message\n");
+            const char *str = message->str;
+            const char ch   = ':';
+            if (strchr(str, ch) == NULL) {
+                broadcast(client, str);
+            }
             print();
             return 1;
         }
