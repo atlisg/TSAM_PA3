@@ -234,7 +234,8 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
         /* If so, remove it */
         g_tree_remove(roomTree, userInfo->currRoom);
     } else {
-        currRoomUsers = g_list_remove(currRoomUsers, userClient);
+        /* Else, update the userlist of the room */
+        g_tree_insert(roomTree, userInfo->currRoom, g_list_remove(currRoomUsers, userClient));
     }
     userInfo->currRoom = newRoom;
 
@@ -469,6 +470,7 @@ int main(int argc, char **argv)
         retval = select(FD_SETSIZE, &rfds, NULL, NULL, &tv);
         if (retval == -1) {
             perror("select()");
+            exit(1);
         } else if (retval > 0) {
             int         connfd, cp, i;
             SSL*        ssl;
@@ -537,12 +539,13 @@ int main(int argc, char **argv)
                             //printf("SSL_pending: %d\n", SSL_pending(ssl));
                             if (!serve(ssl, &client)) {
                                 /* The users wants to disconnect */
+                                ctor(&client, cip, &cp);
                                 log_connection(cip, cp, "disconnected");
 
                                 /* Clean up and close connection, free ssl struct */
                                 SSL_shutdown(ssl);
                                 SSL_free(ssl);
-                                close(connfd);
+                                close(i);
                                 FD_CLR(i, &afds);
                             }
                         //}
