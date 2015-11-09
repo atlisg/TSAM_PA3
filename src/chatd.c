@@ -39,14 +39,20 @@
 /* Global data structures used */
 GTree *roomTree;
 GTree *userTree;
+GTree *authTree;
 int numClients;
 
 /* Structs */
 struct User {
     char *username;
-    char *password;
     char *currRoom;
+    int wrongs;
     SSL *ssl;
+};
+
+struct userAuth {
+    char *password;
+    gboolean isActive;
 };
 
 /* Converts IP address and port */
@@ -90,6 +96,18 @@ gboolean traverse_print_userTree(gpointer key, gpointer value, gpointer data) {
     struct User *user = value;
     printf("~KEY~ client: %s:%d\n", ip, port);
     printf("~VAL~ username: %s, room: %s\n", user->username, user->currRoom);
+
+    return FALSE;
+}
+
+/* Prints out keys and values of authTree */
+gboolean traverse_print_authTree(gpointer key, gpointer value, gpointer data) {
+    gchar *username = key;
+    struct userAuth *pass_n_act = value;
+
+    printf("~KEY~ username: %s\n", username);
+    printf("~VAL~ password: %s, active: %d\n", 
+            pass_n_act->password, pass_n_act->isActive);
 
     return FALSE;
 }
@@ -211,7 +229,7 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
     t = time(NULL);
     strftime(date, sizeof(date), "%FT%T\n", localtime(&t));
 
-    printf("%s : %s:%d %s\n", date, ip, port, msg);
+    printf("\n%s : %s:%d %s\n\n", date, ip, port, msg);
 }
 
 // TODO: Send welcome
@@ -225,7 +243,7 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
     /* Fetch the user's info and client struct */
     struct sockaddr_in *userClient;
     struct User *userInfo;
-    g_tree_lookup_extended(userTree, client, &userClient, &userInfo);
+    g_tree_lookup_extended(userTree, client, (gpointer) &userClient, (gpointer) &userInfo);
     
     /* Check if the room he's leaving will become empty */
     GList *currRoomUsers = g_tree_lookup(roomTree, userInfo->currRoom);
@@ -246,12 +264,14 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
         /* Create/update the room  */
         g_tree_insert(roomTree, newRoom, userlist);
     } else {
-        /* Remove from userTree */
+        /* Remove from userTree and update authTree */
         g_tree_remove(userTree, userClient);
+        struct userAuth *auth = g_tree_lookup(authTree, userInfo->username);
+        auth->isActive = FALSE;
     }
 }
 
-/* Print tree */
+/* Print trees */
 void print() {
 //    GString *dummy = g_string_new(NULL);
     printf("\n-----------Displaying userTree---------\n");
@@ -265,6 +285,12 @@ void print() {
             g_tree_nnodes(roomTree));
     g_tree_foreach(roomTree, 
             (GTraverseFunc) traverse_print_roomTree, NULL);
+    
+    printf("\n-----------Displaying authTree---------\n");
+    printf("Number of nodes in tree: %d\n", 
+            g_tree_nnodes(authTree));
+    g_tree_foreach(authTree, 
+            (GTraverseFunc) traverse_print_authTree, NULL);
 }
 
 /* Send to Clients in Current room */
@@ -283,7 +309,7 @@ void broadcast(struct sockaddr_in *client, const char *message) {
     struct User *currUser;
 
     /* Fetch info from userTree */
-    g_tree_lookup_extended(userTree, client, &currClient, &currUser);
+    g_tree_lookup_extended(userTree, client, (gpointer) &currClient, (gpointer) &currUser);
 
     /* Fetch list of users in current room */
     GList *roomList = g_tree_lookup(roomTree, currUser->currRoom);
@@ -301,7 +327,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
 
     if ((bytes = SSL_read(ssl, buff, sizeof(buff))-2) > 0) {
         buff[bytes] = '\0';
-        printf("buff: %s\n", buff);
+        printf("\nbuff: %s\n", buff);
         
         /* Put message in a GString */
         const gchar *str = &buff[3];
@@ -314,20 +340,77 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             print();
             return 0;
         }
+
         /* /user */
         if (buff[0] == '0' && buff[1] == '1') {
+            /* Fetch user struct */
+            struct User *user = g_tree_lookup(userTree, client);
+            int port;
+            char ip[INET_ADDRSTRLEN];
+            ctor(client, ip, &port);
+
             /* Split Gstring into two */
             gchar **arr = g_strsplit((gchar*) message->str, ":", 2);
 
-            /* Edit the client's username (TODO: if not taken) */
-            struct User *userInfo = g_tree_lookup(userTree, client);
-            userInfo->username = arr[0];
-            userInfo->password = arr[1];
+            /* Authenticate */
+            struct userAuth *val = g_tree_lookup(authTree, arr[0]);
+            
+            /* GString for auth logging */
+            GString *user_auth = g_string_new(arr[0]);
 
-            //TODO send response to client!
+            /* If new user */
+            if (val == NULL) {
+                val = malloc(sizeof(struct userAuth));
+                val->password = arr[1];
+            } else {
+                /* Check if user is active */
+                if (val->isActive) {
+                    g_string_append(user_auth, " authentication error");
+                    log_connection(ip, port, user_auth->str);
+                    SSL_write(ssl, "15\r\n", 4);
+                    return 1;
+                }
+                /* Check if password is correct */
+                if (strcmp(val->password, arr[1]) != 0) {
+                    /* Wrong password */
+                    if (user->wrongs == 2) {
+                        /* Throw user out on the street if 3 wrongs */
+                        switchRooms(client, NULL);
+                        g_string_append(user_auth, " authentication error");
+                        log_connection(ip, port, user_auth->str);
+                        SSL_write(ssl, "16\r\n", 4);
+                        return 0;
+                    }
+                    ++user->wrongs;
+                    g_string_append(user_auth, " authentication error");
+                    log_connection(ip, port, user_auth->str);
+                    SSL_write(ssl, "14\r\n", 4);
+                    return 1;
+                }
+            }
+            /* Update authTree */
+            val->isActive = TRUE;
+            g_tree_insert(authTree, arr[0], val);
+            struct userAuth *old = g_tree_lookup(authTree, user->username);
+            if (old != NULL) {
+                old->isActive = FALSE;
+            }
+            /* Update userTree */
+            user->username = arr[0];
+            user->wrongs   = 0;
+
+            /* Log authentication */
+            g_string_append(user_auth, " authenticated");
+            log_connection(ip, port, user_auth->str);
+
+            /* Build and send reply to client */
+            GString *reply = g_string_new("10:");
+            g_string_append_printf(reply, "%s\r\n", arr[0]);
+            SSL_write(ssl, reply->str, reply->len);
             print();
             return 1;
         }
+
         /* /join */
         if (buff[0] == '0' && buff[1] == '3') {
             /* Remove user from current room and add him to new room */
@@ -341,6 +424,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             print();
             return 1;
         }
+
         /* /who */
         if (buff[0] == '0' && buff[1] == '4') {
             /* Build and send response to client */
@@ -351,6 +435,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             print();
             return 1;
         }
+
         /* /list */
         if (buff[0] == '0' && buff[1] == '5') {
             /* Build and send response to client */
@@ -361,6 +446,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             print();
             return 1;
         }
+
         /* /say */
         if (buff[0] == '0' && buff[1] == '6') {
             const char *str = message->str;
@@ -384,9 +470,9 @@ void initializeUser(SSL* ssl, struct sockaddr_in *client) {
     g_string_printf(username, "%s%d", "Guest", numClients);
     struct User *newUser = malloc(sizeof(struct User));
     newUser->username = username->str;
-    newUser->password = "";
     newUser->currRoom = "Lobby";
-    newUser->ssl = ssl;
+    newUser->wrongs   = 0;
+    newUser->ssl      = ssl;
 
     /* Copying sockaddr_in for the key of the new User */
     struct sockaddr_in *newClient = malloc(sizeof(client));
@@ -449,7 +535,7 @@ int main(int argc, char **argv)
 
     roomTree = g_tree_new((GCompareFunc) strcmp);
     userTree = g_tree_new((GCompareFunc) sockaddr_in_cmp);
-
+    authTree = g_tree_new((GCompareFunc) strcmp);
 
     /* Check whether there is data on the socket fd. */
     FD_ZERO(&afds);
