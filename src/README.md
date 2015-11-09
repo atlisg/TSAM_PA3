@@ -60,6 +60,6 @@ Each number indicates a specific type of message shown below:
 
 ### Last words
 
-Unfortunately we were unable to implement our client to handle our protocol messages, instead it just prints out the reply from the server. Another fault of ours is that passwords are stored in unsalted, unhashed plaintext in the server.  Also, we hardly gave any attention to memory management. Sorry.
+Unfortunately we were unable to implement our client to handle our protocol messages, instead it just prints out the reply from the server. Another fault of ours is that passwords are stored in unsalted, unhashed plaintext in the server.  Also, we hardly gave any attention to memory management. Sorry. ┐(‘～`；)┌
 
 
