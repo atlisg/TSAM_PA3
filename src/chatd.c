@@ -268,7 +268,7 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
         /* Remove from userTree and update authTree */
         g_tree_remove(userTree, userClient);
         struct userAuth *auth = g_tree_lookup(authTree, userInfo->username);
-        auth->isActive = FALSE;
+        if (auth) auth->isActive = FALSE;
     }
 }
 
