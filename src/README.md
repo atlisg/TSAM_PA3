@@ -52,11 +52,11 @@ Each number indicates a specific type of message shown below:
 
 #### Examples
 
-| Reply      | Message                | Action                                              |
-| ----------:|:-----------------------|:----------------------------------------------------|
-| WELCOME    | "00:Guest1:Lobby\r\n"  | client is taken to the Lobby                        |
-| PUBLIC MSG | "09:Atli:Ægir:Hæm\r\n" | Atli sends "Hæm" to Ægir                            |
-| /say    | "06:Atli:Blessaður\r\n"| Atli is sent a private massage from client          |
+| Reply      | Message                 | Action                                              |
+| ----------:|:------------------------|:----------------------------------------------------|
+| WELCOME    | "00:Guest1:Lobby\r\n"   | Client is taken to the Lobby                        |
+| PRIVATE MSG| "17:Atli:Ægir:Hæm\r\n"  | Atli sends "Hæm" to Ægir                            |
+| LISTOFROOMS| "13:{Lobby}:{Room1}\r\n"| Client gets list of rooms                           |
 
 
 
