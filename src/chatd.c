@@ -53,6 +53,7 @@ struct User {
 struct userAuth {
     char *password;
     gboolean isActive;
+    SSL *ssl;
 };
 
 /* Converts IP address and port */
@@ -268,7 +269,10 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
         /* Remove from userTree and update authTree */
         g_tree_remove(userTree, userClient);
         struct userAuth *auth = g_tree_lookup(authTree, userInfo->username);
-        if (auth) auth->isActive = FALSE;
+        if (auth) {
+             auth->isActive = FALSE;
+             auth->ssl      = NULL;
+        }
     }
 }
 
@@ -321,22 +325,43 @@ void broadcast(struct sockaddr_in *client, const char *message) {
     g_list_foreach(roomList, (GFunc) sendMsg, start->str);
 }
 
+/* Sends a private message from the given client to another specified in the message, return TRUE if it succeeds and FALSE if it fails */
+gboolean sendPrvMsg(struct sockaddr_in *client, const char *message) {
+    /* Split the message into, recipient and the content */
+    gchar **strArr   = g_strsplit(message, ":", 2);
+    gchar *recipient = strArr[0];
+    gchar *content   = strArr[1];
+    /* Check whether the recipient exists or not */
+    struct userAuth *recipientPtr = g_tree_lookup(authTree, recipient);
+    if (recipientPtr) {
+        /* If the recipient exists, send him the message and return TRUE */
+        struct User *currUser = g_tree_lookup(userTree, client);
+        GString *reply = g_string_new("17:");
+        g_string_append_printf(reply, "%s:%s:%s\r\n", currUser->username, recipient, content);
+        SSL_write(recipientPtr->ssl, reply->str, reply->len);
+        SSL_write(currUser->ssl,     reply->str, reply->len);
+        return TRUE;
+    }
+    /* The recipient did not exist, return FALSE */
+    return FALSE;
+}
+
 /* Serves the given SSL connection */
 int serve(SSL* ssl, struct sockaddr_in *client){
     char    buff[1024];
     int     fd, bytes;
 
-    if ((bytes = SSL_read(ssl, buff, sizeof(buff))-2) > 0) {
-        buff[bytes] = '\0';
-        printf("\nbuff: %s\n", buff);
-        
-        /* Put message in a GString */
-        const gchar *str = &buff[3];
-        GString *message = g_string_new(str);
+        if ((bytes = SSL_read(ssl, buff, sizeof(buff))-2) > 0) {
+            buff[bytes] = '\0';
+            printf("\nbuff: %s\n", buff);
+            
+            /* Put message in a GString */
+            const gchar *str = &buff[3];
+            GString *message = g_string_new(str);
 
-        /* /bye or /quit */
-        if (buff[0] == '0' && buff[1] == '2') {
-            /* Remove user from current room */
+            /* /bye or /quit */
+            if (buff[0] == '0' && buff[1] == '2') {
+                /* Remove user from current room */
             switchRooms(client, NULL);
             print();
             return 0;
@@ -363,6 +388,7 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             if (val == NULL) {
                 val = malloc(sizeof(struct userAuth));
                 val->password = arr[1];
+                val->ssl      = ssl;
             } else {
                 /* Check if user is active */
                 if (val->isActive) {
@@ -391,10 +417,12 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             }
             /* Update authTree */
             val->isActive = TRUE;
+            val->ssl      = ssl;
             g_tree_insert(authTree, arr[0], val);
             struct userAuth *old = g_tree_lookup(authTree, user->username);
             if (old != NULL) {
                 old->isActive = FALSE;
+                old->ssl      = NULL;
             }
             /* Update userTree */
             user->username = arr[0];
@@ -454,6 +482,11 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             const char ch   = ':';
             if (strchr(str, ch) == NULL) {
                 broadcast(client, str);
+            } else {
+                if(!sendPrvMsg(client, str)) {
+                    GString *reply = g_string_new("18\r\n");
+                    SSL_write(ssl, reply->str, reply->len);
+                }
             }
             print();
             return 1;
