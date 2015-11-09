@@ -58,6 +58,8 @@ Each number indicates a specific type of message shown below:
 | PRIVATE MSG| "17:Atli:Ægir:Hæm\r\n"  | Atli sends "Hæm" to Ægir                            |
 | LISTOFROOMS| "13:{Lobby}:{Room1}\r\n"| Client gets list of rooms                           |
 
+### Last words
 
+Unfortunately we were unable to implement our client to handle our protocol messages, instead it just prints out the reply from the server. Another fault of ours is that passwords are stored in unsalted, unhashed plaintext in the server.  Also, we hardly gave any attention to memory management. Sorry.
 
 
