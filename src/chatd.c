@@ -193,7 +193,6 @@ void load_certificates(SSL_CTX* ctx){
         ERR_print_errors_fp(stderr);
         exit(1);
     }
-    // CA file?
 
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 }
@@ -232,12 +231,6 @@ void log_connection(char ip[INET_ADDRSTRLEN], int port, char* msg){
 
     printf("\n%s : %s:%d %s\n\n", date, ip, port, msg);
 }
-
-// TODO: Send welcome
-
-// TODO: Send private message
-
-// TODO: Broadcast message
 
 /* Switch rooms */
 void switchRooms(struct sockaddr_in *client, char *newRoom) {
@@ -278,7 +271,6 @@ void switchRooms(struct sockaddr_in *client, char *newRoom) {
 
 /* Print trees */
 void print() {
-//    GString *dummy = g_string_new(NULL);
     printf("\n-----------Displaying userTree---------\n");
     printf("Number of nodes in tree: %d\n", 
             g_tree_nnodes(userTree));
@@ -492,7 +484,6 @@ int serve(SSL* ssl, struct sockaddr_in *client){
             return 1;
         }
     }
-    //printf("Serve returning 0\n");
     return 1;
 }
 
@@ -508,38 +499,13 @@ void initializeUser(SSL* ssl, struct sockaddr_in *client) {
     newUser->wrongs   = 0;
     newUser->ssl      = ssl;
 
-    /* Copying sockaddr_in for the key of the new User */
-    struct sockaddr_in *newClient = malloc(sizeof(client));
-    memcpy(newClient, client, sizeof(client));
-
-    /* Check if the user already exists? */
-    gpointer entry = g_tree_lookup(userTree, newClient);
-    if (entry) {
-        printf("found this user!\n");
-    }
-
     /* Add client to userTree */
-    printf("Inserting new user into userTree!\n");
-    g_tree_insert(userTree, newClient, newUser);
-
-    // checking how the userTree looks like now
-    printf("------------------\nuserTree (size = %d):\n", g_tree_nnodes(userTree));
-    g_tree_foreach(userTree, (GTraverseFunc) traverse_print_userTree, NULL);
-    printf("------------------\n");
+    g_tree_insert(userTree, client, newUser);
 
     /* Add user to lobby; create lobby if definitely non existent */
     GList *userList = g_tree_lookup(roomTree, newUser->currRoom);
-    if (userList == NULL) {
-        printf("Creating Lobby!\n");
-        userList = g_list_append(userList, newClient);
-        g_tree_insert(roomTree, newUser->currRoom, userList);
-    } else {
-        printf("Adding new user to Lobby!\n");
-        userList = g_list_append(userList, newClient);
-    }    
-    printf("------------------\nUsers in Lobby now:\n");
-    g_list_foreach(userList, (GFunc) print_list, NULL);
-    printf("------------------\n");
+    userList = g_list_append(userList, client);
+    g_tree_insert(roomTree, newUser->currRoom, userList);
     numClients++;
 }
 
@@ -624,51 +590,33 @@ int main(int argc, char **argv)
                             exit(1);
                         }
                         
-
-                        initializeUser(ssl, &client);
-                        printf("User initialized\n");
-                        
-                        printf("connfd: %d\n", connfd);
                         SSL_fds[connfd] = ssl;
                         clients[connfd] = client;
                         FD_SET(connfd, &afds);
 
+
+                        initializeUser(SSL_fds[connfd], &clients[connfd]);
+                        printf("User initialized\n");
+                        
+                        printf("connfd: %d\n", connfd);
+                        
                         /* Get client's IP address and port */ 
                         ctor(&client, cip, &cp);
                         log_connection(cip, cp, "connected");
                     } else {
                         ssl = SSL_fds[i];
                         client = clients[i];
-                        //printf("SSL fd: %d\n", SSL_get_fd(ssl));
-                        //printf("SSL_pending: %d\n", SSL_pending(ssl));
-                        
-                        /* Attempt SSL connection to client */
-                        /*
-                        if(SSL_accept(ssl) == -1){
+                        if (!serve(ssl, &client)) {
+                            /* The users wants to disconnect */
+                            ctor(&client, cip, &cp);
+                            log_connection(cip, cp, "disconnected");
+
+                            /* Clean up and close connection, free ssl struct */
                             SSL_shutdown(ssl);
                             SSL_free(ssl);
-                            close(connfd);
-                            ERR_print_errors_fp(stderr);
-                            exit(1);
+                            close(i);
+                            FD_CLR(i, &afds);
                         }
-                        */
-
-
-                        //if(SSL_pending(ssl)){
-                            //printf("SSL_pending: %d\n", SSL_pending(ssl));
-                            if (!serve(ssl, &client)) {
-                                /* The users wants to disconnect */
-                                ctor(&client, cip, &cp);
-                                log_connection(cip, cp, "disconnected");
-
-                                /* Clean up and close connection, free ssl struct */
-                                SSL_shutdown(ssl);
-                                SSL_free(ssl);
-                                close(i);
-                                FD_CLR(i, &afds);
-                            }
-                        //}
-
                     }
                 }
             }           
@@ -677,13 +625,10 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
     }
-    printf("Closing primary socket descriptor\n");
+        printf("Closing primary socket descriptor\n");
     close(sockfd);
+    /* TODO: Free the clients and SSL's */
     printf("Freeing SSL context\n");
     SSL_CTX_free(ssl_ctx);
+    return 0;
 }
-
-
-
-
-
