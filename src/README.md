@@ -13,9 +13,9 @@ Each number indicates a specific type of message shown below:
 
 | Code | Command           | Parameters       |Error reply      | Success reply | Server Action                          |
 | ---- |:-----------------:| -----------------|----------------:|---------------|----------------------------------------|
-| 01   | /user             |<user><password>  | WRONGPASS, INUSE| AUTHENTICATED | Add user in Lobby and list of all users|
+| 01   | /user             |\<user\>\<password\>  | WRONGPASS, INUSE| AUTHENTICATED | Add user in Lobby and list of all users|
 | 02   | /bye or /quit     |                  |                 | Disconnect    |                                        |
-| 03   | /join             |<room>            |                 | JOIN          | Add user in room                       |
+| 03   | /join             |\<room\>            |                 | JOIN          | Add user in room                       |
 | 04   | /who              |<room>            |                 | LISTOFALLUSERS| Send the client a list of all users    |
 | 05   | /list             |                  |                 | LISTOFROOMS   | Send the client a list of all rooms    |
 | 06   | /say or none      |[<user>]<msg>     | NOSUCHNICK      | MSG           | Send private/public messages           |
