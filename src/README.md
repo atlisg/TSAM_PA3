@@ -60,6 +60,8 @@ Each number indicates a specific type of message shown below:
 
 ### Last words
 
+It should be noted that Marcel was kind enough to grant us 3 extra days for this assignment without a late handin penalty. See https://piazza.com/class/idpqbm5fnnl190?cid=410
+
 Unfortunately we were unable to implement our client to handle our protocol messages, instead it just prints out the reply from the server. Another fault of ours is that passwords are stored in unsalted, unhashed plaintext in the server.  Also, we hardly gave any attention to memory management. Sorry.  ┐(‘～`；)┌
 
 
