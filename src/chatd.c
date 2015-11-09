@@ -497,8 +497,6 @@ int serve(SSL* ssl, struct sockaddr_in *client){
 }
 
 void initializeUser(SSL* ssl, struct sockaddr_in *client) {
-    printf("SSL_write welcome: %d\n", SSL_write(ssl, "Welcome.\r\n", 10));
-
     /* Initializing new User struct */
     GString *username = g_string_new(NULL);
     g_string_printf(username, "%s%d", "Guest", numClients);
@@ -507,6 +505,11 @@ void initializeUser(SSL* ssl, struct sockaddr_in *client) {
     newUser->currRoom = "Lobby";
     newUser->wrongs   = 0;
     newUser->ssl      = ssl;
+
+    /* Sending respone to client */
+    GString *welcome = g_string_new("00:Welcome.:");
+    g_string_append_printf(welcome, "%s:%s\r\n", newUser->username, newUser->currRoom); 
+    SSL_write(ssl, welcome->str, welcome->len);
 
     /* Copying sockaddr_in for the key of the new User */
     struct sockaddr_in *newClient = malloc(sizeof(client));
