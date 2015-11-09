@@ -388,13 +388,6 @@ int main(int argc, char **argv)
     /* Set up secure connection to the chatd server. */
     check_ssl_error(SSL_connect(server_ssl));
     
-    /* Read welcome message from server and print it out */
-    /*
-    if (SSL_read(server_ssl, message, sizeof(message)) > 0) {
-        printf("%s\n", message);
-    }
-    */
-
     /* Read characters from the keyboard while waiting for input.
      */
     prompt = strdup("> ");
@@ -427,14 +420,6 @@ int main(int argc, char **argv)
             perror("select()");
             break;
         }
-        if (r == 0) {
-            //SSL_write(server_ssl, "No message?\r\n", 13);
-            //fsync(STDOUT_FILENO);
-            /* Whenever you print out a message, call this
-               to reprint the current input line. */
-            //rl_redisplay();
-            //continue;
-        }
         if (FD_ISSET(STDIN_FILENO, &rfds)) {
             rl_callback_read_char();
         }
@@ -446,24 +431,11 @@ int main(int argc, char **argv)
             int bytes;
             if ((bytes = SSL_read(server_ssl, message, sizeof(message))) > 0) {
                 write(STDOUT_FILENO, message, bytes);
+                write(STDOUT_FILENO, prompt, strlen(prompt));
                 fsync(STDOUT_FILENO);
                 rl_redisplay();
             }
         }
-        /* For parallel connections */
-/*        if (roar > 0) {
-            int i;
-            for (i = 0; i < FD_SETSIZE; ++i) {
-                if (FD_ISSET(i, &rfds)) {
-                    if (i == server_fd) {
-                        // connecting first time
-                    }
-                    else {
-                        // not first time commection
-                    }
-                }
-            }
-        }*/
    }
     /* replace by code to shutdown the connection and exit
        the program. */
